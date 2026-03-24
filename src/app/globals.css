@@ -1,26 +1,119 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #565883;
+  --primary-dim: #4a4c77;
+  --primary-container: #cacafd;
+  --primary-fixed: #cacafd;
+  --on-primary: #f4f1ff;
+  --on-primary-container: #40426c;
+  
+  --secondary: #546200;
+  --secondary-container: #d2f000;
+  --secondary-fixed: #d2f000;
+  --on-secondary: #e6ff62;
+  --on-secondary-container: #4b5700;
+  
+  --surface: #f6f6f6;
+  --surface-container: #e8e8e8;
+  --surface-container-low: #f1f1f1;
+  --surface-container-high: #e2e2e2;
+  --surface-container-lowest: #ffffff;
+  --surface-container-highest: #dddddd;
+  --surface-variant: #dddddd;
+  --surface-dim: #d4d4d4;
+  --surface-bright: #f6f6f6;
+  
+  --on-surface: #2f2f2f;
+  --on-surface-variant: #5b5b5b;
+  --on-background: #2f2f2f;
+  
+  --background: #f6f6f6;
+  
+  --outline: #777777;
+  --outline-variant: #adadad;
+  
+  --error: #b41340;
+  --error-container: #f74b6d;
+  --on-error: #ffefef;
+  --on-error-container: #510017;
+  
+  --tertiary: #5a5c5c;
+  --tertiary-container: #ffffff;
+  --on-tertiary: #f3f2f2;
+  
+  --inverse-surface: #0e0e0e;
+  --inverse-primary: #cacafd;
+  --inverse-on-surface: #9d9d9d;
+  
+  --font-headline: 'Space Grotesk', sans-serif;
+  --font-body: 'Manrope', sans-serif;
 }
 
 @theme inline {
+  --color-primary: var(--primary);
+  --color-primary-dim: var(--primary-dim);
+  --color-primary-container: var(--primary-container);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-on-primary: var(--on-primary);
+  --color-on-primary-container: var(--on-primary-container);
+  
+  --color-secondary: var(--secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-secondary-fixed: var(--secondary-fixed);
+  --color-on-secondary: var(--on-secondary);
+  --color-on-secondary-container: var(--on-secondary-container);
+  
+  --color-surface: var(--surface);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-variant: var(--surface-variant);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-bright: var(--surface-bright);
+  
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-on-background: var(--on-background);
+  
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
+  --color-on-error: var(--on-error);
+  --color-on-error-container: var(--on-error-container);
+  
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary: var(--on-tertiary);
+  
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-primary: var(--inverse-primary);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+  
+  --font-headline: var(--font-headline);
+  --font-body: var(--font-body);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--surface);
+  color: var(--on-surface);
+  font-family: 'Manrope', sans-serif;
+}
+
+.font-headline {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.font-body {
+  font-family: 'Manrope', sans-serif;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }

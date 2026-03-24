@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  password     String
+  name         String?
+  phone        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  addresses    Address[]
+  subscription Subscription?
+  orders       Order[]
+  payments     Payment[]
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String  @default("home")
+  fullName  String?
+  address   String
+  city      String
+  state     String
+  pincode   String
+  phone     String?
+  isDefault Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          String   // solo, studio, gallery
+  price         Int
+  frequency     String   @default("weekly")
+  status        String   @default("active") // active, paused, cancelled
+  nextDelivery  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+}
+
+model Order {
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId     String?
+  subscription       Subscription? @relation(fields: [subscriptionId], references: [id])
+  orderType          String   @default("subscription") // subscription, gift
+  status             String   @default("pending") // pending, paid, processing, shipped, delivered, cancelled
+  total              Int
+  razorpayOrderId    String?
+  razorpayPaymentId  String?
+  shiprocketOrderId  String?
+  trackingNumber     String?
+  deliveryDate       DateTime?
+  giftMessage       String?
+  giftRecipientName  String?
+  giftRecipientPhone String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  payments          Payment[]
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  amount    Int
+  currency  String   @default("INR")
+  status    String   // pending, success, failed, refunded
+  razorpayPaymentId String?
+  razorpayOrderId   String?
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Int
+  image       String?
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}

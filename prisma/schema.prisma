@@ -37,17 +37,19 @@ model Address {
 }
 
 model Subscription {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan          String   // solo, studio, gallery
-  price         Int
-  frequency     String   @default("weekly")
-  status        String   @default("active") // active, paused, cancelled
-  nextDelivery  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  orders        Order[]
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                String    // solo, studio, gallery
+  price               Int       // in paise ( INR * 100 )
+  status              String    @default("active") // active, paused, cancelled
+  razorpaySubId       String?   // razorpay subscription id
+  razorpayCustomerId  String?   // razorpay customer id
+  nextBillingDate     DateTime?
+  nextDeliveryDate    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  orders              Order[]
 }
 
 model Order {

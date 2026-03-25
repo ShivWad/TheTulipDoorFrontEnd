@@ -1,8 +1,10 @@
+"use client";
+
 export default function PaymentPage() {
   return (
     <>
       <header className="mb-16">
-        <h1 className="text-6xl md:text-8xl font-headline font-black tracking-tighter leading-tight text-primary uppercase">
+        <h1 className="text-4xl md:text-6xl lg:text-8xl font-headline font-black tracking-tighter leading-tight text-primary uppercase">
           Payment <span className="bg-secondary-container px-4">Methods</span>
         </h1>
         <p className="font-body text-xl text-zinc-500 mt-6 max-w-xl">
@@ -20,14 +22,14 @@ export default function PaymentPage() {
                 <span className="text-white font-headline font-bold text-xs">VISA</span>
               </div>
               <div>
-                <p className="font-headline font-bold text-lg">•••• •••• •••• 4242</p>
+                <p className="font-headline font-bold text-lg">**** **** **** 4242</p>
                 <p className="font-body text-sm text-zinc-500 mt-1">Expires 12/28</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
               <span className="bg-secondary-container text-on-secondary-container px-3 py-1 font-headline font-bold text-xs uppercase tracking-widest">Default</span>
-              <button className="material-symbols-outlined text-zinc-400 hover:text-primary">edit</button>
-              <button className="material-symbols-outlined text-zinc-400 hover:text-error">delete</button>
+              <button type="button" className="material-symbols-outlined text-zinc-400 hover:text-primary">edit</button>
+              <button type="button" className="material-symbols-outlined text-zinc-400 hover:text-error">delete</button>
             </div>
           </div>
 
@@ -37,19 +39,19 @@ export default function PaymentPage() {
                 <span className="text-white font-headline font-bold text-xs">MC</span>
               </div>
               <div>
-                <p className="font-headline font-bold text-lg">•••• •••• •••• 8888</p>
+                <p className="font-headline font-bold text-lg">**** **** **** 8888</p>
                 <p className="font-body text-sm text-zinc-500 mt-1">Expires 06/27</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <button className="font-headline font-bold text-xs uppercase tracking-widest text-primary hover:underline">Set Default</button>
-              <button className="material-symbols-outlined text-zinc-400 hover:text-primary">edit</button>
-              <button className="material-symbols-outlined text-zinc-400 hover:text-error">delete</button>
+              <button type="button" className="font-headline font-bold text-xs uppercase tracking-widest text-primary hover:underline">Set Default</button>
+              <button type="button" className="material-symbols-outlined text-zinc-400 hover:text-primary">edit</button>
+              <button type="button" className="material-symbols-outlined text-zinc-400 hover:text-error">delete</button>
             </div>
           </div>
         </div>
 
-        <button className="mt-6 flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase tracking-widest">
+        <button type="button" className="mt-6 flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase tracking-widest">
           <span className="material-symbols-outlined">add</span>
           Add New Card
         </button>
@@ -64,12 +66,12 @@ export default function PaymentPage() {
         </div>
         <div className="lg:col-span-8 grid grid-cols-1 gap-6 bg-surface-container-lowest p-8 shadow-[12px_12px_0px_0px_#56588310]">
           <div className="flex flex-col gap-2">
-            <label className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">Billing Name</label>
-            <input className="bg-surface-container-high border-none py-4 px-6 font-body text-lg" placeholder="Arjun Malhotra" type="text" />
+            <label htmlFor="billingName" className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">Billing Name</label>
+            <input id="billingName" className="bg-surface-container-high border-none py-4 px-6 font-body text-lg" placeholder="Arjun Malhotra" type="text" />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">GST Number (Optional)</label>
-            <input className="bg-surface-container-high border-none py-4 px-6 font-body text-lg" placeholder="06AABCU9603R1ZM" type="text" />
+            <label htmlFor="gstNumber" className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">GST Number (Optional)</label>
+            <input id="gstNumber" className="bg-surface-container-high border-none py-4 px-6 font-body text-lg" placeholder="06AABCU9603R1ZM" type="text" />
           </div>
         </div>
       </section>

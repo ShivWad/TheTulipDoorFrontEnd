@@ -2,7 +2,7 @@ export default function DigitalVaultPage() {
   return (
     <>
       <header className="mb-16">
-        <h1 className="text-6xl md:text-8xl font-headline font-black tracking-tighter leading-tight text-primary uppercase">
+        <h1 className="text-4xl md:text-6xl lg:text-8xl font-headline font-black tracking-tighter leading-tight text-primary uppercase">
           The <span className="bg-secondary-container px-4">Digital Vault</span>
         </h1>
         <p className="font-body text-xl text-zinc-500 mt-6 max-w-xl">

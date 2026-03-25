@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { z } from 'zod';
+import logger from '@/lib/logger';
+
+const addressSchema = z.object({
+  type: z.enum(['home', 'work', 'other']).optional(),
+  fullName: z.string().max(100).optional(),
+  address: z.string().min(1, 'Address is required').max(500),
+  city: z.string().min(1, 'City is required').max(100),
+  state: z.string().min(1, 'State is required').max(100),
+  pincode: z.string().min(1, 'Pincode is required').max(20),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number').optional().or(z.literal('')),
+  isDefault: z.boolean().optional(),
+});
 
 export async function GET() {
   try {
@@ -20,7 +33,7 @@ export async function GET() {
 
     return NextResponse.json(addresses);
   } catch (error) {
-    console.error('Get addresses error:', error);
+    logger.error({ message: 'Get addresses error', error: (error as Error).message });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -39,14 +52,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { type, fullName, address, city, state, pincode, phone, isDefault } = await request.json();
-
-    if (!address || !city || !state || !pincode) {
-      return NextResponse.json(
-        { error: 'Address, city, state, and pincode are required' },
-        { status: 400 }
-      );
+    const body = await request.json();
+    
+    const validation = addressSchema.safeParse(body);
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message || 'Invalid input';
+      return NextResponse.json({ error: firstError }, { status: 400 });
     }
+
+    const { type, fullName, address, city, state, pincode, phone, isDefault } = validation.data;
 
     // If this is set as default, unset other defaults
     if (isDefault) {
@@ -72,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newAddress, { status: 201 });
   } catch (error) {
-    console.error('Create address error:', error);
+    logger.error({ message: 'Create address error', error: (error as Error).message });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -91,7 +105,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { id, type, fullName, address, city, state, pincode, phone, isDefault } = await request.json();
+    const body = await request.json();
+    const { id, ...addressData } = body;
+    
+    const validation = addressSchema.safeParse(addressData);
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message || 'Invalid input';
+      return NextResponse.json({ error: firstError }, { status: 400 });
+    }
+
+    const { type, fullName, address, city, state, pincode, phone, isDefault } = validation.data;
 
     const existingAddress = await db.address.findFirst({
       where: { id, userId: session.user.id },
@@ -128,7 +151,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(updatedAddress);
   } catch (error) {
-    console.error('Update address error:', error);
+    logger.error({ message: 'Update address error', error: (error as Error).message });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -174,7 +197,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ message: 'Address deleted successfully' });
   } catch (error) {
-    console.error('Delete address error:', error);
+    logger.error({ message: 'Delete address error', error: (error as Error).message });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import crypto from "crypto";
+import logger from "@/lib/logger";
 
 interface RazorpayWebhookPayload {
   event: string;
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`Subscription ${subscription.id} charged. Next billing: ${nextBillingDate}`);
+          logger.info(`Subscription ${subscription.id} charged. Next billing: ${nextBillingDate}`);
         }
         break;
       }
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
         const subscriptionEntity = payload.payload.subscription?.entity;
         if (!subscriptionEntity) break;
 
-        console.log(`Subscription ${subscriptionEntity.id} payment failed`);
+        logger.info(`Subscription ${subscriptionEntity.id} payment failed`);
         break;
       }
 
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("Webhook error:", error);
+    logger.error({ message: 'Webhook error', error: (error as Error).message });
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 }

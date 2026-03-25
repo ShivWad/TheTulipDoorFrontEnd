@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
 
@@ -9,7 +10,18 @@ export default function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { href: "/account", label: "Profile", icon: "person_edit" },
+    { href: "/account/shipping", label: "Shipping", icon: "local_shipping" },
+    { href: "/account/payment", label: "Payments", icon: "payments" },
+    { href: "/account/rituals", label: "Rituals", icon: "shield_lock" },
+    { href: "/account/vault", label: "Vault", icon: "folder_special" },
+  ];
+
+  const isActive = (href: string) => pathname === href;
 
   return (
     <div className="min-h-screen bg-surface">
@@ -89,10 +101,62 @@ export default function AccountLayout({
         )}
       </nav>
 
-      {/* Main Content */}
-      <main className="pt-20 md:pt-20">
-        {children}
-      </main>
+      <div className="flex pt-20">
+        {/* Desktop Sidebar */}
+        <aside className="hidden md:flex flex-col py-10 px-6 gap-8 h-screen w-64 bg-surface-container border-r-0 fixed left-0">
+          <div>
+            <h2 className="font-headline font-bold text-primary text-xl">Account</h2>
+            <p className="font-body font-medium uppercase tracking-widest text-[10px] text-zinc-500">The Digital Greenhouse</p>
+          </div>
+          <nav className="flex flex-col gap-4">
+            {navItems.map((item) => (
+              <Link 
+                key={item.href} 
+                href={item.href} 
+                className={`flex items-center gap-4 py-3 px-4 transition-all ${
+                  isActive(item.href) 
+                    ? "bg-secondary-container text-black font-black translate-x-2" 
+                    : "text-primary hover:bg-primary-fixed hover:text-white"
+                }`}
+              >
+                <span className="material-symbols-outlined">{item.icon}</span>
+                <span className="font-body font-medium uppercase tracking-widest text-[12px]">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
+          <button 
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="mt-auto py-4 px-4 bg-primary text-white font-headline font-bold uppercase tracking-widest text-[12px] text-left hover:bg-primary-dim transition-colors cursor-pointer"
+          >
+            Log Out
+          </button>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 md:ml-64 p-8 lg:p-16 min-h-screen">
+          {children}
+        </main>
+      </div>
+
+      {/* Mobile Bottom Nav */}
+      <div className="md:hidden fixed bottom-0 w-full h-16 bg-white/90 backdrop-blur-lg flex justify-around items-center z-50">
+        <Link href="/account" className={`flex flex-col items-center gap-1 ${pathname === '/account' ? 'text-primary' : 'text-zinc-400'}`}>
+          <span className="material-symbols-outlined">person</span>
+          <span className="text-[10px] font-bold uppercase">Profile</span>
+        </Link>
+        <Link href="/account/shipping" className={`flex flex-col items-center gap-1 ${pathname === '/account/shipping' ? 'text-primary' : 'text-zinc-400'}`}>
+          <span className="material-symbols-outlined">local_shipping</span>
+          <span className="text-[10px] font-bold uppercase">Shipping</span>
+        </Link>
+        <Link href="/account/rituals" className={`flex flex-col items-center gap-1 ${pathname === '/account/rituals' ? 'text-primary' : 'text-zinc-400'}`}>
+          <span className="material-symbols-outlined">shield</span>
+          <span className="text-[10px] font-bold uppercase">Rituals</span>
+        </Link>
+        <Link href="/cart" className={`flex flex-col items-center gap-1 ${pathname === '/cart' ? 'text-primary' : 'text-zinc-400'}`}>
+          <span className="material-symbols-outlined">shopping_bag</span>
+          <span className="text-[10px] font-bold uppercase">Cart</span>
+        </Link>
+      </div>
     </div>
   );
 }

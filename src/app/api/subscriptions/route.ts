@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Razorpay from "razorpay";
+import { z } from "zod";
+import logger from "@/lib/logger";
+
+const subscriptionSchema = z.object({
+  plan: z.enum(["solo", "studio", "gallery"]),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number").optional(),
+});
+
+const subscriptionActionSchema = z.object({
+  action: z.enum(["pause", "resume", "cancel"]),
+});
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID!,
@@ -9,9 +20,9 @@ const razorpay = new Razorpay({
 });
 
 const PLANS = {
-  solo: { price: 180000, name: "The Solo", stems: "12-15 Stems", period: "monthly" },
-  studio: { price: 340000, name: "The Studio", stems: "24-30 Stems", period: "monthly" },
-  gallery: { price: 480000, name: "The Gallery", stems: "40+ Stems", period: "monthly" },
+  solo: { price: 1800, name: "The Solo", stems: "12-15 Stems", period: "monthly" },
+  studio: { price: 3400, name: "The Studio", stems: "24-30 Stems", period: "monthly" },
+  gallery: { price: 4800, name: "The Gallery", stems: "40+ Stems", period: "monthly" },
 };
 
 async function createOrGetPlan(planKey: string) {
@@ -72,7 +83,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("Get subscription error:", error);
+    logger.error({ message: 'Get subscription error', error: (error as Error).message });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -84,11 +95,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { plan } = await request.json();
-
-    if (!plan || !PLANS[plan as keyof typeof PLANS]) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+    const body = await request.json();
+    
+    const validation = subscriptionSchema.safeParse(body);
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message || "Invalid input";
+      return NextResponse.json({ error: firstError }, { status: 400 });
     }
+
+    const { plan } = validation.data;
 
     const existingSub = await db.subscription.findUnique({
       where: { userId: session.user.id },
@@ -173,7 +188,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Create subscription error:", error);
+    logger.error({ message: 'Create subscription error', error: (error as Error).message });
     return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });
   }
 }
@@ -193,7 +208,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "No subscription found" }, { status: 404 });
     }
 
-    const { action } = await request.json();
+    const body = await request.json();
+    
+    const validation = subscriptionActionSchema.safeParse(body);
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message || "Invalid input";
+      return NextResponse.json({ error: firstError }, { status: 400 });
+    }
+
+    const { action } = validation.data;
 
     if (action === "pause") {
       await razorpay.subscriptions.pause(subscription.razorpaySubId!, {
@@ -234,7 +257,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("Update subscription error:", error);
+    logger.error({ message: 'Update subscription error', error: (error as Error).message });
     return NextResponse.json({ error: "Failed to update subscription" }, { status: 500 });
   }
 }

@@ -264,7 +264,7 @@ export default function ShippingPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label htmlFor="type" className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">Type</label>
                   <select
@@ -304,7 +304,7 @@ export default function ShippingPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label htmlFor="city" className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">City</label>
                   <input
@@ -331,7 +331,7 @@ export default function ShippingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label htmlFor="pincode" className="font-headline font-bold text-[10px] uppercase tracking-[0.2em] text-zinc-400">Pincode</label>
                   <input

@@ -71,7 +71,7 @@ export default function AccountPage() {
     <>
       <header className="mb-16">
         <h1 className="text-4xl md:text-6xl lg:text-8xl font-headline font-black tracking-tighter leading-tight text-primary uppercase">
-          Edit Your <br /> <span className="bg-secondary-container px-4">Ritual Details</span>
+          Edit Your <span className="block md:inline">Ritual Details</span>
         </h1>
         <p className="font-body text-xl text-zinc-500 mt-6 max-w-xl">
           Configure your digital presence and physical coordinates for the next floral drop.
@@ -156,8 +156,8 @@ export default function AccountPage() {
         </section>
       </form>
 
-      <div className="mt-32 opacity-10 pointer-events-none select-none">
-        <h4 className="text-[12rem] font-headline font-black leading-none -tracking-widest text-primary uppercase">Tulip Door</h4>
+      <div className="mt-32 opacity-10 pointer-events-none select-none overflow-x-hidden">
+        <h4 className="text-6xl md:text-[8rem] lg:text-[12rem] font-headline font-black leading-none -tracking-widest text-primary uppercase">Tulip Door</h4>
       </div>
     </>
   );

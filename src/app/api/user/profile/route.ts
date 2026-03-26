@@ -1,3 +1,26 @@
+/**
+ * User Profile API
+ * 
+ * Endpoints for authenticated users to view and update their profile.
+ * 
+ * Endpoints:
+ * - GET /api/user/profile - Get current user's profile
+ * - PUT /api/user/profile - Update profile (name, phone, password)
+ * 
+ * Request Body (PUT):
+ * - name: User's name (optional)
+ * - phone: Phone number (optional, E.164 format)
+ * - currentPassword: Required if changing password
+ * - newPassword: New password (optional, min 6 chars)
+ * 
+ * Responses:
+ * - 200: Success
+ * - 400: Validation error / incorrect password
+ * - 401: Unauthorized
+ * - 404: User not found
+ * - 500: Internal server error
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -5,6 +28,9 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import logger from '@/lib/logger';
 
+/**
+ * Zod schema for profile update validation
+ */
 const profileUpdateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100).optional(),
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number').optional().or(z.literal('')),
@@ -12,8 +38,15 @@ const profileUpdateSchema = z.object({
   newPassword: z.string().min(6, 'Password must be at least 6 characters').optional(),
 });
 
+/**
+ * GET /api/user/profile
+ * 
+ * Get the current user's profile information.
+ * Returns: id, email, name, phone, createdAt
+ */
 export async function GET() {
   try {
+    // Check authentication
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -23,6 +56,7 @@ export async function GET() {
       );
     }
 
+    // Fetch user profile (excluding sensitive data)
     const user = await db.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -44,8 +78,17 @@ export async function GET() {
   }
 }
 
+/**
+ * PUT /api/user/profile
+ * 
+ * Update the current user's profile.
+ * Can update name, phone, and optionally change password.
+ * 
+ * Password change requires current password verification.
+ */
 export async function PUT(request: NextRequest) {
   try {
+    // Check authentication
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -55,6 +98,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Parse and validate request body
     const body = await request.json();
     
     const validation = profileUpdateSchema.safeParse(body);
@@ -65,6 +109,7 @@ export async function PUT(request: NextRequest) {
 
     const { name, phone, currentPassword, newPassword } = validation.data;
 
+    // Fetch current user data
     const user = await db.user.findUnique({
       where: { id: session.user.id },
     });
@@ -76,7 +121,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // If changing password, verify current password
+    // If changing password, verify current password first
     if (newPassword) {
       if (!currentPassword) {
         return NextResponse.json(
@@ -93,6 +138,7 @@ export async function PUT(request: NextRequest) {
         );
       }
 
+      // Hash new password and update
       const hashedPassword = await bcrypt.hash(newPassword, 12);
 
       await db.user.update({
@@ -104,6 +150,7 @@ export async function PUT(request: NextRequest) {
         },
       });
     } else {
+      // Update without password change
       await db.user.update({
         where: { id: session.user.id },
         data: {

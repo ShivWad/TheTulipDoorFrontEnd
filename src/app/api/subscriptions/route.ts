@@ -60,16 +60,15 @@ const razorpay = new Razorpay({
 });
 
 /**
- * Create a Razorpay plan or return existing plan ID from database
+ * Get Razorpay plan ID from database
  * 
- * Uses database as single source of truth for plan IDs.
- * Checks database first, then Razorpay API if not found.
+ * Plans are managed manually in Razorpay dashboard.
+ * This function just reads the plan ID from the database.
  * 
  * @param planKey - Plan key (solo/studio/gallery)
  * @returns Razorpay plan ID
  */
-async function createOrGetPlan(planKey: string) {
-  // Check database first
+async function getRazorpayPlanId(planKey: string) {
   const dbPlan = await db.subscriptionPlan.findUnique({
     where: { planKey },
   });
@@ -78,46 +77,11 @@ async function createOrGetPlan(planKey: string) {
     throw new Error(`Plan not found: ${planKey}`);
   }
 
-  // If we already have a Razorpay plan ID, return it
-  if (dbPlan.razorpayPlanId) {
-    return dbPlan.razorpayPlanId;
+  if (!dbPlan.razorpayPlanId) {
+    throw new Error(`Razorpay plan ID not configured for: ${planKey}`);
   }
 
-  // Need to create the plan in Razorpay
-  const planId = `plan_${planKey}_monthly`;
-
-  try {
-    // Try to fetch existing plan from Razorpay
-    const existingPlan = await razorpay.plans.fetch(planId);
-    
-    // Save the Razorpay plan ID to database
-    await db.subscriptionPlan.update({
-      where: { planKey },
-      data: { razorpayPlanId: existingPlan.id },
-    });
-    
-    return existingPlan.id;
-  } catch {
-    // Plan doesn't exist in Razorpay, create it
-    const newPlan = await razorpay.plans.create({
-      period: "monthly",
-      interval: 1,
-      item: {
-        name: `${dbPlan.name} - Monthly Subscription`,
-        amount: dbPlan.price,
-        currency: "INR",
-        description: `${dbPlan.stems} - Delivered weekly`,
-      },
-    });
-
-    // Save the new Razorpay plan ID to database
-    await db.subscriptionPlan.update({
-      where: { planKey },
-      data: { razorpayPlanId: newPlan.id },
-    });
-
-    return newPlan.id;
-  }
+  return dbPlan.razorpayPlanId;
 }
 
 /**
@@ -243,7 +207,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Create or get Razorpay plan
-    const razorpayPlanId = await createOrGetPlan(plan);
+    const razorpayPlanId = await getRazorpayPlanId(plan);
 
     // Create Razorpay subscription
     // Note: Using `as any` due to Razorpay SDK type issues

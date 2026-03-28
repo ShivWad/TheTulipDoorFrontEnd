@@ -21,7 +21,7 @@ const userCreateSchema = z.object({
   isAdmin: z.boolean().optional().default(false),
 });
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Middleware already validates isAdmin for /admin/* routes
     const session = await auth();
@@ -36,12 +36,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
-    }
+    const { id } = await params;
 
     const userData = await db.user.findUnique({
       where: { id },
@@ -110,7 +105,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Middleware already validates isAdmin for /admin/* routes
     const session = await auth();
@@ -125,12 +120,9 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
+    const { id } = await params;
     const body = await request.json();
-    const { id, ...updateData } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
-    }
+    const updateData = body;
 
     // Validate the update data
     const validation = userUpdateSchema.safeParse(updateData);
@@ -252,7 +244,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Middleware already validates isAdmin for /admin/* routes
     const session = await auth();
@@ -267,8 +259,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });

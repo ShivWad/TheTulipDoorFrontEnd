@@ -35,13 +35,16 @@ export default function AdminPaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   // Loading state
   const [loading, setLoading] = useState(true);
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   /**
    * Fetch payments from API on component mount
    */
   const fetchPayments = async () => {
     try {
-      const res = await fetch("/api/admin/payments");
+      const res = await fetch(`/api/admin/payments?page=${page}`);
       const data = await res.json();
       
       if (!res.ok) {
@@ -51,6 +54,7 @@ export default function AdminPaymentsPage() {
       }
       
       setPayments(data.payments || []);
+      setTotalPages(data.totalPages || 1);
     } catch (error) {
       console.error("Error fetching payments:", error);
       setPayments([]);
@@ -59,10 +63,11 @@ export default function AdminPaymentsPage() {
     }
   };
 
-  // Fetch payments on mount
+  // Fetch payments on mount and page change
   useEffect(() => {
+    setLoading(true);
     fetchPayments();
-  }, []);
+  }, [page]);
 
   return (
     <div>
@@ -152,6 +157,31 @@ export default function AdminPaymentsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!loading && payments.length > 0 && (
+        <div className="flex items-center justify-between mt-6">
+          <div className="text-sm text-gray-500">
+            Page {page} of {totalPages}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

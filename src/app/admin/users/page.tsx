@@ -57,6 +57,19 @@ export default function AdminUsersPage() {
   // Create mode toggle - shows/hides create user form
   const [createMode, setCreateMode] = useState(false);
   
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    isAdmin: false,
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  
   // Form data for creating new user
   const [formData, setFormData] = useState({
     name: "",
@@ -74,6 +87,13 @@ export default function AdminUsersPage() {
   
   // Success message state for form
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+
+  // Delete confirmation modal state
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; userId: string | null; userName: string }>({
+    open: false,
+    userId: null,
+    userName: "",
+  });
 
   /**
    * Fetch users from API
@@ -107,6 +127,94 @@ export default function AdminUsersPage() {
   useEffect(() => {
     fetchUsers();
   }, [page, search]);
+
+  /**
+   * Open edit modal for a user
+   */
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setEditFormData({
+      name: user.name || "",
+      email: user.email,
+      phone: user.phone || "",
+      isAdmin: user.isAdmin,
+    });
+    setEditMode(true);
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  /**
+   * Handle edit form submission
+   */
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    setEditError(null);
+    setEditSuccess(null);
+    setEditLoading(true);
+
+    try {
+      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setEditSuccess(data.message || "User updated successfully");
+        // Refresh user list
+        fetchUsers();
+        // Close modal after short delay
+        setTimeout(() => {
+          setEditMode(false);
+          setEditingUser(null);
+        }, 1500);
+      } else {
+        const data = await res.json();
+        setEditError(data.error || "Failed to update user");
+      }
+    } catch (error) {
+      console.error("Edit user error:", error);
+      setEditError("An unexpected error occurred");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  /**
+   * Handle delete user - open confirmation modal
+   */
+  const confirmDelete = (userId: string, userName: string) => {
+    setDeleteModal({ open: true, userId, userName: userName || "this user" });
+  };
+
+  /**
+   * Execute delete after confirmation
+   */
+  const handleDelete = async () => {
+    if (!deleteModal.userId) return;
+    
+    try {
+      const res = await fetch(`/api/admin/users/${deleteModal.userId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete user");
+      }
+    } catch (error) {
+      console.error("Delete user error:", error);
+      alert("An unexpected error occurred");
+    } finally {
+      setDeleteModal({ open: false, userId: null, userName: "" });
+    }
+  };
 
   /**
    * Handle new user creation form submission
@@ -364,15 +472,20 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <button
-                        onClick={() => {
-                          // TODO: Implement edit functionality
-                          alert("Edit functionality not implemented yet");
-                        }}
-                        className="text-sm text-indigo-600 hover:text-indigo-900"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={() => handleEdit(user)}
+                          className="text-sm text-indigo-600 hover:text-indigo-900"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => confirmDelete(user.id, user.name || "")}
+                          className="text-sm text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -403,6 +516,139 @@ export default function AdminUsersPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Edit User Modal */}
+      {editMode && editingUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Edit User</h2>
+                <button
+                  onClick={() => { setEditMode(false); setEditingUser(null); }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <span className="material-symbols-outlined text-2xl">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleEditSave} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                    <input
+                      type="text"
+                      value={editFormData.name}
+                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={editFormData.email}
+                      onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="user@example.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      value={editFormData.phone}
+                      onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="+1234567890"
+                    />
+                  </div>
+                  <div className="flex items-center">
+                    <label className="flex items-center gap-2 mt-6">
+                      <input
+                        type="checkbox"
+                        checked={editFormData.isAdmin}
+                        onChange={(e) => setEditFormData({ ...editFormData, isAdmin: e.target.checked })}
+                        className="h-4 w-4 text-indigo-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        Administrator
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {editError && (
+                  <div className="bg-red-50 border border-red-200 text-red-500 px-4 py-2 rounded">
+                    {editError}
+                  </div>
+                )}
+
+                {editSuccess && (
+                  <div className="bg-green-50 border border-green-200 text-green-500 px-4 py-2 rounded">
+                    {editSuccess}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => { setEditMode(false); setEditingUser(null); }}
+                    className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editLoading}
+                    className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {editLoading ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">Delete User</h2>
+              <button
+                onClick={() => setDeleteModal({ open: false, userId: null, userName: "" })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete <strong>{deleteModal.userName}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setDeleteModal({ open: false, userId: null, userName: "" })}
+                className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

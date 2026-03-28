@@ -46,6 +46,19 @@ export default function AdminSubscriptionsPage() {
   // Current status filter
   const [filter, setFilter] = useState("all");
 
+  // Action confirmation modal state
+  const [actionModal, setActionModal] = useState<{
+    open: boolean;
+    subscriptionId: string | null;
+    action: string;
+    userName: string;
+  }>({
+    open: false,
+    subscriptionId: null,
+    action: "",
+    userName: "",
+  });
+
   /**
    * Fetch subscriptions from API
    * Called when filter changes
@@ -76,29 +89,32 @@ export default function AdminSubscriptionsPage() {
   }, [filter]);
 
   /**
-   * Handle subscription status update
-   * Calls PUT /api/admin/subscriptions with action
-   * 
-   * @param id - Subscription ID
-   * @param action - Action to perform (pause, resume, cancel)
+   * Open action confirmation modal
    */
-  const updateStatus = async (id: string, action: string) => {
-    // Show confirmation dialog for safety
-    if (!confirm(`Are you sure you want to ${action} this subscription?`)) return;
+  const confirmAction = (subscriptionId: string, action: string, userName: string) => {
+    setActionModal({ open: true, subscriptionId, action, userName: userName || "this user" });
+  };
+
+  /**
+   * Execute status update after confirmation
+   */
+  const updateStatus = async () => {
+    if (!actionModal.subscriptionId || !actionModal.action) return;
     
     try {
       const res = await fetch(`/api/admin/subscriptions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id: actionModal.subscriptionId, action: actionModal.action }),
       });
 
-      // Refresh list on success
       if (res.ok) {
         fetchSubscriptions();
       }
     } catch (error) {
       console.error("Error updating subscription:", error);
+    } finally {
+      setActionModal({ open: false, subscriptionId: null, action: "", userName: "" });
     }
   };
 
@@ -223,7 +239,7 @@ export default function AdminSubscriptionsPage() {
                       {/* Pause button - shown for active subscriptions */}
                       {sub.status === "active" && (
                         <button
-                          onClick={() => updateStatus(sub.id, "pause")}
+                          onClick={() => confirmAction(sub.id, "pause", sub.user.name || "")}
                           className="text-indigo-600 hover:text-indigo-900 text-sm"
                         >
                           Pause
@@ -232,7 +248,7 @@ export default function AdminSubscriptionsPage() {
                       {/* Resume button - shown for paused subscriptions */}
                       {sub.status === "paused" && (
                         <button
-                          onClick={() => updateStatus(sub.id, "resume")}
+                          onClick={() => confirmAction(sub.id, "resume", sub.user.name || "")}
                           className="text-green-600 hover:text-green-900 text-sm"
                         >
                           Resume
@@ -241,7 +257,7 @@ export default function AdminSubscriptionsPage() {
                       {/* Cancel button - shown for non-cancelled subscriptions */}
                       {sub.status !== "cancelled" && (
                         <button
-                          onClick={() => updateStatus(sub.id, "cancel")}
+                          onClick={() => confirmAction(sub.id, "cancel", sub.user.name || "")}
                           className="text-red-600 hover:text-red-900 text-sm"
                         >
                           Cancel
@@ -253,6 +269,40 @@ export default function AdminSubscriptionsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Action Confirmation Modal */}
+      {actionModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900 capitalize">{actionModal.action} Subscription</h2>
+              <button
+                onClick={() => setActionModal({ open: false, subscriptionId: null, action: "", userName: "" })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to {actionModal.action} the subscription for <strong>{actionModal.userName}</strong>?
+            </p>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setActionModal({ open: false, subscriptionId: null, action: "", userName: "" })}
+                className="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={updateStatus}
+                className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

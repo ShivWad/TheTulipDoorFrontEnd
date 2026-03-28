@@ -34,6 +34,12 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import { logUserAction } from "@/lib/logger";
+import { z } from "zod";
+
+const subscriptionActionSchema = z.object({
+  id: z.string().min(1, "Subscription ID is required"),
+  action: z.enum(["pause", "resume", "cancel"]),
+});
 
 /**
  * GET /api/admin/subscriptions
@@ -48,6 +54,16 @@ export async function GET(request: NextRequest) {
     
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Secondary authorization check
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { isAdmin: true },
+    });
+
+    if (!user?.isAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // 2. Rate limiting
@@ -115,6 +131,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Secondary authorization check
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { isAdmin: true },
+    });
+
+    if (!user?.isAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // 2. Rate limiting
     const ip = getClientIp(request);
     const { success } = rateLimit(ip);
@@ -122,8 +148,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
 
-    // 3. Parse request body
-    const { id, action } = await request.json();
+    // 3. Parse and validate request body
+    const body = await request.json();
+    const validation = subscriptionActionSchema.safeParse(body);
+    
+    if (!validation.success) {
+      const firstError = validation.error.issues[0]?.message || "Invalid input";
+      return NextResponse.json({ error: firstError }, { status: 400 });
+    }
+
+    const { id, action } = validation.data;
 
     // 4. Find subscription
     const subscription = await db.subscription.findUnique({

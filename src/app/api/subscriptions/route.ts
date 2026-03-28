@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
         data: {
           plan,
           price: planInfo.price,
-          status: "active",
+          status: "pending",
           razorpaySubId: subscription.id,
           razorpayCustomerId: customer.id,
           nextBillingDate,
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
           userId: session.user.id,
           plan,
           price: planInfo.price,
-          status: "active",
+          status: "pending",
           razorpaySubId: subscription.id,
           razorpayCustomerId: customer.id,
           nextBillingDate,

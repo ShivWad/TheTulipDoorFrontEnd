@@ -91,7 +91,16 @@ export default function RitualsPage() {
           setShowPlanSelector(false);
         }
       } else {
-        setMessage({ type: "error", text: data.error || "Failed to create subscription" });
+        // Handle missing required information
+        if (data.details) {
+          const missingText = data.details.join(", ");
+          setMessage({ 
+            type: "error", 
+            text: `Please add: ${missingText}. Go to Profile to add missing information.` 
+          });
+        } else {
+          setMessage({ type: "error", text: data.error || "Failed to create subscription" });
+        }
       }
     } catch {
       setMessage({ type: "error", text: "Something went wrong" });

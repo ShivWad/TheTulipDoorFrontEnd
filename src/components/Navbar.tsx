@@ -34,7 +34,8 @@ export default function Navbar() {
 
         {/* Desktop Right Side */}
         <div className="hidden md:flex gap-6 items-center">
-          <Link href="/cart" className="material-symbols-outlined text-primary hover:translate-x-1 hover:-translate-y-1 transition-transform duration-200">shopping_cart</Link>
+          {/* Cart disabled */}
+          {/* <Link href="/cart" className="material-symbols-outlined text-primary hover:translate-x-1 hover:-translate-y-1 transition-transform duration-200">shopping_cart</Link> */}
           {status === "loading" ? (
             <span className="material-symbols-outlined text-primary animate-pulse">hourglass_empty</span>
           ) : session ? (
@@ -83,13 +84,14 @@ export default function Navbar() {
             >
               Gifting
             </Link>
-            <Link 
+            {/* Cart disabled */}
+            {/* <Link 
               href="/cart" 
               className="font-headline font-bold tracking-tighter uppercase text-primary py-2 border-b border-primary/10"
               onClick={() => setMobileMenuOpen(false)}
             >
               Cart
-            </Link>
+            </Link> */}
             {session ? (
               <>
                 <Link 

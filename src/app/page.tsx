@@ -2,13 +2,40 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 
+interface Plan {
+  id: string;
+  planKey: string;
+  name: string;
+  description: string | null;
+  price: number;
+  stems: string;
+  type: string;
+}
+
 export default function Home() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const isLoggedIn = !!session;
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/plans")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.plans) {
+          setPlans(data.plans);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const subscribeLink = isLoggedIn ? "/account/rituals" : "/register";
+
+  const recurringPlans = plans.filter(p => p.type !== "one_time");
+  const oneTimePlans = plans.filter(p => p.type === "one_time");
 
   return (
     <div className="min-h-screen bg-surface">
@@ -78,34 +105,49 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section className="py-20 px-8 bg-surface-container">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-5xl md:text-6xl font-black text-primary tracking-tighter uppercase mb-12">Choose Your Reset</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Solo */}
-              <Link href={subscribeLink} className="block border-2 border-primary p-8 hover:bg-secondary-container transition-colors cursor-pointer">
-                <h3 className="text-3xl font-bold uppercase mb-4">The Solo</h3>
-                <p className="text-lg font-medium opacity-70 uppercase tracking-tight mb-6">12-15 Stems. Perfect for a desk reset.</p>
-                <span className="text-4xl font-black">₹1800<span className="text-lg font-normal">/mo</span></span>
-              </Link>
-
-              {/* Studio */}
-              <Link href={subscribeLink} className="block bg-secondary-container p-8 border-2 border-primary cursor-pointer">
-                <h3 className="text-3xl font-bold uppercase mb-4">The Studio</h3>
-                <p className="text-lg font-medium opacity-70 uppercase tracking-tight mb-6">24-30 Stems. Our signature volume.</p>
-                <span className="text-4xl font-black">₹3400<span className="text-lg font-normal">/mo</span></span>
-              </Link>
-
-              {/* Gallery */}
-              <Link href={subscribeLink} className="block border-2 border-primary p-8 hover:bg-secondary-container transition-colors cursor-pointer">
-                <h3 className="text-3xl font-bold uppercase mb-4">The Gallery</h3>
-                <p className="text-lg font-medium opacity-70 uppercase tracking-tight mb-6">40+ Stems. For the master florist.</p>
-                <span className="text-4xl font-black">₹4800<span className="text-lg font-normal">/mo</span></span>
-              </Link>
+        {/* Recurring Subscription Plans */}
+        {!loading && recurringPlans.length > 0 && (
+          <section className="py-20 px-8 bg-surface-container">
+            <div className="max-w-7xl mx-auto">
+              <h2 className="text-5xl md:text-6xl font-black text-primary tracking-tighter uppercase mb-12">Choose Your Reset</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {recurringPlans.map((plan, index) => (
+                  <Link 
+                    key={plan.id} 
+                    href={subscribeLink} 
+                    className={`block border-2 border-primary p-8 hover:bg-secondary-container transition-colors cursor-pointer ${index === 1 ? 'bg-secondary-container' : ''}`}
+                  >
+                    <h3 className="text-3xl font-bold uppercase mb-4">{plan.name}</h3>
+                    <p className="text-lg font-medium opacity-70 uppercase tracking-tight mb-6">{plan.stems}. {plan.description}</p>
+                    <span className="text-4xl font-black">₹{plan.price / 100}<span className="text-lg font-normal">/mo</span></span>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+
+        {/* One-time Purchase Plans */}
+        {!loading && oneTimePlans.length > 0 && (
+          <section className="py-20 px-8 bg-surface-container-low">
+            <div className="max-w-7xl mx-auto">
+              <h2 className="text-5xl md:text-6xl font-black text-primary tracking-tighter uppercase mb-12">One-Time Purchase</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {oneTimePlans.map((plan) => (
+                  <Link 
+                    key={plan.id} 
+                    href={subscribeLink} 
+                    className="block border-2 border-primary p-8 hover:bg-secondary-container transition-colors cursor-pointer"
+                  >
+                    <h3 className="text-3xl font-bold uppercase mb-4">{plan.name}</h3>
+                    <p className="text-lg font-medium opacity-70 uppercase tracking-tight mb-6">{plan.stems}. {plan.description}</p>
+                    <span className="text-4xl font-black">₹{plan.price / 100}<span className="text-lg font-normal"></span></span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* CTA Section */}
         <section className="py-32 px-8 text-center">

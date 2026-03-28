@@ -3,11 +3,22 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 
+interface Plan {
+  id: string;
+  planKey: string;
+  name: string;
+  description: string | null;
+  price: number;
+  stems: string;
+  type: string;
+}
+
 interface SubscriptionData {
   hasSubscription: boolean;
   subscription?: {
     id: string;
     plan: string;
+    type?: string;
     planName: string;
     price: number;
     status: string;
@@ -17,33 +28,10 @@ interface SubscriptionData {
   };
 }
 
-const PLANS = [
-  { 
-    key: "solo", 
-    name: "The Solo", 
-    price: 1800, 
-    stems: "12-15 Stems",
-    description: "Perfect for a desk reset" 
-  },
-  { 
-    key: "studio", 
-    name: "The Studio", 
-    price: 3400, 
-    stems: "24-30 Stems",
-    description: "Our signature volume" 
-  },
-  { 
-    key: "gallery", 
-    name: "The Gallery", 
-    price: 4800, 
-    stems: "40+ Stems",
-    description: "For the master florist" 
-  },
-];
-
 export default function RitualsPage() {
   const { data: session } = useSession();
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPlanSelector, setShowPlanSelector] = useState(false);
   const [showManageMenu, setShowManageMenu] = useState(false);
@@ -53,8 +41,21 @@ export default function RitualsPage() {
   useEffect(() => {
     if (session) {
       fetchSubscription();
+      fetchPlans();
     }
   }, [session]);
+
+  const fetchPlans = async () => {
+    try {
+      const res = await fetch("/api/plans");
+      const data = await res.json();
+      if (data.plans) {
+        setPlans(data.plans);
+      }
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+    }
+  };
 
   const fetchSubscription = async () => {
     try {
@@ -146,6 +147,9 @@ export default function RitualsPage() {
     }).format(price / 100);
   };
 
+  const recurringPlans = plans.filter(p => p.type !== "one_time");
+  const oneTimePlans = plans.filter(p => p.type === "one_time");
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -188,7 +192,9 @@ export default function RitualsPage() {
                   {subscriptionData.subscription.planName}
                 </p>
                 <p className="font-body text-sm opacity-80 mt-2">
-                  {formatPrice(subscriptionData.subscription.price)} / month
+                  {subscriptionData.subscription.type === "one_time" 
+                    ? formatPrice(subscriptionData.subscription.price)
+                    : `${formatPrice(subscriptionData.subscription.price)} / month`}
                 </p>
               </div>
               <span className="bg-secondary-container text-on-secondary-container px-4 py-2 font-headline font-bold text-sm uppercase tracking-widest">
@@ -204,25 +210,29 @@ export default function RitualsPage() {
                     : "N/A"}
                 </p>
               </div>
-              <div>
-                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Next Billing</p>
-                <p className="font-body text-lg mt-1">
-                  {subscriptionData.subscription.nextBillingDate 
-                    ? formatDate(subscriptionData.subscription.nextBillingDate)
-                    : "N/A"}
-                </p>
-              </div>
-              <div>
-                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Slot</p>
-                <p className="font-body text-lg mt-1">Saturday Morning</p>
-              </div>
+              {subscriptionData.subscription.type !== "one_time" && (
+                <>
+                  <div>
+                    <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Next Billing</p>
+                    <p className="font-body text-lg mt-1">
+                      {subscriptionData.subscription.nextBillingDate 
+                        ? formatDate(subscriptionData.subscription.nextBillingDate)
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Slot</p>
+                    <p className="font-body text-lg mt-1">Saturday Morning</p>
+                  </div>
+                </>
+              )}
               <div>
                 <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Status</p>
                 <p className="font-body text-lg mt-1 capitalize">{subscriptionData.subscription.status}</p>
               </div>
             </div>
 
-            {subscriptionData.subscription.status !== "cancelled" && (
+            {subscriptionData.subscription.status !== "cancelled" && subscriptionData.subscription.status !== "completed" && subscriptionData.subscription.type !== "one_time" && (
               <div className="relative">
                 <button 
                   onClick={() => setShowManageMenu(!showManageMenu)}
@@ -305,26 +315,58 @@ export default function RitualsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {PLANS.map((plan) => (
-                <button
-                  key={plan.key}
-                  onClick={() => handleSubscribe(plan.key)}
-                  disabled={processing}
-                  className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
-                >
-                  <div>
-                    <h3 className="text-2xl font-bold uppercase">{plan.name}</h3>
-                    <p className="text-sm mt-2 font-medium opacity-70 uppercase tracking-tight">{plan.stems}</p>
-                    <p className="text-xs mt-2 opacity-60">{plan.description}</p>
-                  </div>
-                  <span className="text-3xl font-black mt-4">
-                    ₹{plan.price}
-                    <span className="text-sm font-normal">/mo</span>
-                  </span>
-                </button>
-              ))}
-            </div>
+            {/* Recurring Plans */}
+            {recurringPlans.length > 0 && (
+              <>
+                <h3 className="font-headline font-bold text-xl uppercase mb-4">Monthly Subscription</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  {recurringPlans.map((plan) => (
+                    <button
+                      key={plan.id}
+                      onClick={() => handleSubscribe(plan.planKey)}
+                      disabled={processing}
+                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
+                    >
+                      <div>
+                        <h3 className="text-2xl font-bold uppercase">{plan.name}</h3>
+                        <p className="text-sm mt-2 font-medium opacity-70 uppercase tracking-tight">{plan.stems}</p>
+                        <p className="text-xs mt-2 opacity-60">{plan.description}</p>
+                      </div>
+                      <span className="text-3xl font-black mt-4">
+                        ₹{plan.price / 100}
+                        <span className="text-sm font-normal">/mo</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* One-time Plans */}
+            {oneTimePlans.length > 0 && (
+              <>
+                <h3 className="font-headline font-bold text-xl uppercase mb-4">One-Time Purchase</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {oneTimePlans.map((plan) => (
+                    <button
+                      key={plan.id}
+                      onClick={() => handleSubscribe(plan.planKey)}
+                      disabled={processing}
+                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
+                    >
+                      <div>
+                        <h3 className="text-2xl font-bold uppercase">{plan.name}</h3>
+                        <p className="text-sm mt-2 font-medium opacity-70 uppercase tracking-tight">{plan.stems}</p>
+                        <p className="text-xs mt-2 opacity-60">{plan.description}</p>
+                      </div>
+                      <span className="text-3xl font-black mt-4">
+                        ₹{plan.price / 100}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <p className="text-center text-sm text-zinc-500 mt-6">
               Payment processed securely via Razorpay. Cancel anytime.

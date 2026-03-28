@@ -60,58 +60,62 @@ const razorpay = new Razorpay({
 });
 
 /**
- * Subscription plan configurations
- * Defines pricing and features for each plan tier
- */
-const PLANS = {
-  solo: { price: 1800, name: "The Solo", stems: "12-15 Stems", period: "monthly" },
-  studio: { price: 3400, name: "The Studio", stems: "24-30 Stems", period: "monthly" },
-  gallery: { price: 4800, name: "The Gallery", stems: "40+ Stems", period: "monthly" },
-};
-
-/**
- * In-memory cache for Razorpay plan IDs
- * Plans are static and should only be created once
- */
-const planCache: Map<string, string> = new Map();
-
-/**
- * Create a Razorpay plan or return cached plan ID
+ * Create a Razorpay plan or return existing plan ID from database
  * 
- * Razorpay requires plans to be created before associating with subscriptions.
- * This function checks the cache first, then Razorpay API if not cached.
+ * Uses database as single source of truth for plan IDs.
+ * Checks database first, then Razorpay API if not found.
  * 
  * @param planKey - Plan key (solo/studio/gallery)
  * @returns Razorpay plan ID
  */
 async function createOrGetPlan(planKey: string) {
-  // Check cache first
-  const cachedPlanId = planCache.get(planKey);
-  if (cachedPlanId) {
-    return cachedPlanId;
+  // Check database first
+  const dbPlan = await db.subscriptionPlan.findUnique({
+    where: { planKey },
+  });
+
+  if (!dbPlan) {
+    throw new Error(`Plan not found: ${planKey}`);
   }
 
-  const planInfo = PLANS[planKey as keyof typeof PLANS];
+  // If we already have a Razorpay plan ID, return it
+  if (dbPlan.razorpayPlanId) {
+    return dbPlan.razorpayPlanId;
+  }
+
+  // Need to create the plan in Razorpay
   const planId = `plan_${planKey}_monthly`;
 
   try {
-    // Try to fetch existing plan
+    // Try to fetch existing plan from Razorpay
     const existingPlan = await razorpay.plans.fetch(planId);
-    planCache.set(planKey, existingPlan.id);
+    
+    // Save the Razorpay plan ID to database
+    await db.subscriptionPlan.update({
+      where: { planKey },
+      data: { razorpayPlanId: existingPlan.id },
+    });
+    
     return existingPlan.id;
   } catch {
-    // Plan doesn't exist, create it
+    // Plan doesn't exist in Razorpay, create it
     const newPlan = await razorpay.plans.create({
       period: "monthly",
       interval: 1,
       item: {
-        name: `${planInfo.name} - Monthly Subscription`,
-        amount: planInfo.price,
+        name: `${dbPlan.name} - Monthly Subscription`,
+        amount: dbPlan.price,
         currency: "INR",
-        description: `${planInfo.stems} - Delivered weekly`,
+        description: `${dbPlan.stems} - Delivered weekly`,
       },
     });
-    planCache.set(planKey, newPlan.id);
+
+    // Save the new Razorpay plan ID to database
+    await db.subscriptionPlan.update({
+      where: { planKey },
+      data: { razorpayPlanId: newPlan.id },
+    });
+
     return newPlan.id;
   }
 }
@@ -148,12 +152,17 @@ export async function GET() {
     }
 
     // Return subscription details
+    // Fetch plan name from database
+    const planDetails = await db.subscriptionPlan.findUnique({
+      where: { planKey: subscription.plan },
+    });
+
     return NextResponse.json({
       hasSubscription: true,
       subscription: {
         id: subscription.id,
         plan: subscription.plan,
-        planName: PLANS[subscription.plan as keyof typeof PLANS]?.name,
+        planName: planDetails?.name || subscription.plan,
         price: subscription.price,
         status: subscription.status,
         nextBillingDate: subscription.nextBillingDate,
@@ -212,7 +221,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const planInfo = PLANS[plan as keyof typeof PLANS];
+    // Fetch plan details from database
+    const planInfo = await db.subscriptionPlan.findUnique({
+      where: { planKey: plan },
+    });
+
+    if (!planInfo) {
+      return NextResponse.json({ error: "Invalid plan selected" }, { status: 400 });
+    }
     
     // Fetch user data for customer creation
     const user = await db.user.findUnique({

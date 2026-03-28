@@ -227,22 +227,34 @@ export async function POST(request: NextRequest) {
     let shortUrl: string;
 
     if (planType === "one_time") {
-      // Create one-time order (not a subscription)
+      // Create one-time order using Payment Links (provides hosted checkout URL)
       const priceId = await getRazorpayPriceId(plan, "one_time");
       
-      const order = await razorpay.orders.create({
+      // Get user details for payment link
+      const userEmail = user?.email || "";
+      const userPhone = user?.phone || undefined;
+
+      // Create Razorpay Payment Link (provides a hosted checkout URL)
+      const paymentLink = await razorpay.paymentLink.create({
         amount: planInfo.price,
         currency: "INR",
-        receipt: `order_${Date.now()}`,
+        accept_partial: false,
+        description: `${planInfo.name} - One-time purchase`,
+        customer: {
+          email: userEmail,
+          contact: userPhone,
+        },
         notes: {
           planKey: plan,
           type: "one_time",
+          userId: session.user.id,
         },
+        callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account/rituals?payment=success`,
+        callback_method: "get",
       } as any);
 
-      razorpayOrderId = order.id;
-      // For one-time orders, construct checkout URL
-      shortUrl = `https://rzp.io/i/${order.id}`;
+      razorpayOrderId = paymentLink.id;
+      shortUrl = paymentLink.short_url;
     } else {
       // Create recurring subscription
       const planId = await getRazorpayPriceId(plan, "recurring");

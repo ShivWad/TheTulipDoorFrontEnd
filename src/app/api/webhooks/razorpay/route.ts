@@ -53,6 +53,14 @@ interface RazorpayWebhookPayload {
         status: string;
       };
     };
+    payment_link?: {
+      entity: {
+        id: string;
+        amount: number;
+        status: string;
+        customer_id?: string;
+      };
+    };
   };
 }
 
@@ -174,6 +182,37 @@ export async function POST(request: NextRequest) {
           });
 
           logger.info(`One-time payment ${paymentEntity.id} captured for subscription ${subscription.id}`);
+        }
+        break;
+      }
+
+      // payment_link.paid: Payment Link (one-time) was paid
+      case "payment_link.paid": {
+        const paymentLinkEntity = payload.payload.payment_link?.entity;
+        if (!paymentLinkEntity) break;
+
+        // Find subscription by payment link ID (stored in razorpayOrderId)
+        const subscription = await db.subscription.findFirst({
+          where: { razorpayOrderId: paymentLinkEntity.id },
+        });
+
+        if (subscription && subscription.type === "one_time") {
+          // Calculate next delivery date (next Saturday)
+          const now = new Date();
+          const nextDeliveryDate = new Date(now);
+          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
+          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
+
+          // Update one-time order to completed
+          await db.subscription.update({
+            where: { id: subscription.id },
+            data: {
+              status: "completed",
+              nextDeliveryDate,
+            },
+          });
+
+          logger.info(`Payment Link ${paymentLinkEntity.id} paid for subscription ${subscription.id}`);
         }
         break;
       }

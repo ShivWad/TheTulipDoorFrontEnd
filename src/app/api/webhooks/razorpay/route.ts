@@ -147,6 +147,37 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      // payment.captured: One-time payment successful
+      case "payment.captured": {
+        const paymentEntity = payload.payload.payment?.entity;
+        if (!paymentEntity) break;
+
+        // Find subscription by order ID
+        const subscription = await db.subscription.findFirst({
+          where: { razorpayOrderId: paymentEntity.order_id },
+        });
+
+        if (subscription && subscription.type === "one_time") {
+          // Calculate next delivery date (next Saturday)
+          const now = new Date();
+          const nextDeliveryDate = new Date(now);
+          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
+          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
+
+          // Update one-time order to completed
+          await db.subscription.update({
+            where: { id: subscription.id },
+            data: {
+              status: "completed",
+              nextDeliveryDate,
+            },
+          });
+
+          logger.info(`One-time payment ${paymentEntity.id} captured for subscription ${subscription.id}`);
+        }
+        break;
+      }
+
       // subscription.paused: Subscription was paused
       case "subscription.paused": {
         const subscriptionEntity = payload.payload.subscription?.entity;

@@ -38,19 +38,21 @@ model Address {
 }
 
 model Subscription {
-  id                 String    @id @default(cuid())
-  userId             String    @unique
-  plan               String
-  price              Int
-  status             String    @default("active")
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  nextBillingDate    DateTime?
-  nextDeliveryDate   DateTime?
-  razorpayCustomerId String?
-  razorpaySubId      String?
-  orders             Order[]
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                String    // solo, studio, gallery
+  price               Int       // in paise ( INR * 100 )
+  type                String    @default("recurring") // recurring or one_time
+  status              String    @default("pending") // pending, active, paused, cancelled, completed
+  razorpaySubId       String?   // razorpay subscription id (for recurring)
+  razorpayOrderId     String?   // razorpay order id (for one-time)
+  razorpayCustomerId  String?   // razorpay customer id
+  nextBillingDate     DateTime?
+  nextDeliveryDate    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  orders              Order[]
 }
 
 model Order {
@@ -124,7 +126,9 @@ model SubscriptionPlan {
   description    String?
   price          Int
   stems          String
-  razorpayPlanId String?  @unique
+  type           String   @default("recurring") // recurring or one_time
+  razorpayPlanId String?  @unique // For recurring subscriptions
+  razorpayPriceId String?  @unique // For one-time payments
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

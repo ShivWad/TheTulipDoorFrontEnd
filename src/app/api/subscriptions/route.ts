@@ -39,7 +39,7 @@ import logger from "@/lib/logger";
  * Validates plan selection and optional phone
  */
 const subscriptionSchema = z.object({
-  plan: z.enum(["solo", "studio", "gallery"]),
+  plan: z.enum(["solo", "studio", "gallery", "single"]),
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number").optional(),
 });
 
@@ -60,15 +60,16 @@ const razorpay = new Razorpay({
 });
 
 /**
- * Get Razorpay plan ID from database
+ * Get Razorpay plan/price ID from database
  * 
  * Plans are managed manually in Razorpay dashboard.
- * This function just reads the plan ID from the database.
+ * This function reads the plan/price ID from the database.
  * 
- * @param planKey - Plan key (solo/studio/gallery)
- * @returns Razorpay plan ID
+ * @param planKey - Plan key (solo, studio, gallery, single)
+ * @param type - "recurring" or "one_time"
+ * @returns Razorpay plan/price ID
  */
-async function getRazorpayPlanId(planKey: string) {
+async function getRazorpayPriceId(planKey: string, type: string) {
   const dbPlan = await db.subscriptionPlan.findUnique({
     where: { planKey },
   });
@@ -77,10 +78,16 @@ async function getRazorpayPlanId(planKey: string) {
     throw new Error(`Plan not found: ${planKey}`);
   }
 
+  if (type === "one_time") {
+    if (!dbPlan.razorpayPriceId) {
+      throw new Error(`Razorpay price ID not configured for one-time: ${planKey}`);
+    }
+    return dbPlan.razorpayPriceId;
+  }
+
   if (!dbPlan.razorpayPlanId) {
     throw new Error(`Razorpay plan ID not configured for: ${planKey}`);
   }
-
   return dbPlan.razorpayPlanId;
 }
 
@@ -193,6 +200,8 @@ export async function POST(request: NextRequest) {
     if (!planInfo) {
       return NextResponse.json({ error: "Invalid plan selected" }, { status: 400 });
     }
+
+    const planType = planInfo.type || "recurring";
     
     // Fetch user data for customer creation
     const user = await db.user.findUnique({
@@ -206,54 +215,82 @@ export async function POST(request: NextRequest) {
       contact: user?.phone || undefined,
     });
 
-    // Create or get Razorpay plan
-    const razorpayPlanId = await getRazorpayPlanId(plan);
-
-    // Create Razorpay subscription
-    // Note: Using `as any` due to Razorpay SDK type issues
-    const subscription: any = await razorpay.subscriptions.create({
-      plan_id: razorpayPlanId,
-      total_count: 52, // 1 year of deliveries
-      quantity: 1,
-      customer_id: customer.id,
-      start_at: Math.floor(Date.now() / 1000) + 86400, // Start tomorrow
-      notify_by: 1, // Notify customer
-    } as any);
-
-    // Calculate billing and delivery dates
+    // Calculate next delivery date
     const now = new Date();
-    const nextBillingDate = new Date(now);
-    nextBillingDate.setDate(now.getDate() + 30);
-    
     const nextDeliveryDate = new Date(now);
     const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
     nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
 
-    // Save subscription to database
+    let razorpayOrderId: string | null = null;
+    let razorpaySubId: string | null = null;
+    let nextBillingDate: Date | null = null;
+    let shortUrl: string;
+
+    if (planType === "one_time") {
+      // Create one-time order (not a subscription)
+      const priceId = await getRazorpayPriceId(plan, "one_time");
+      
+      const order = await razorpay.orders.create({
+        amount: planInfo.price,
+        currency: "INR",
+        receipt: `order_${Date.now()}`,
+        notes: {
+          planKey: plan,
+          type: "one_time",
+        },
+      } as any);
+
+      razorpayOrderId = order.id;
+      // For one-time orders, construct checkout URL
+      shortUrl = `https://rzp.io/i/${order.id}`;
+    } else {
+      // Create recurring subscription
+      const planId = await getRazorpayPriceId(plan, "recurring");
+      
+      const subscription: any = await razorpay.subscriptions.create({
+        plan_id: planId,
+        total_count: 52, // 1 year of deliveries
+        quantity: 1,
+        customer_id: customer.id,
+        start_at: Math.floor(Date.now() / 1000) + 86400, // Start tomorrow
+        notify_by: 1,
+      } as any);
+
+      razorpaySubId = subscription.id;
+      shortUrl = subscription.short_url;
+      
+      // Set next billing date for subscriptions
+      nextBillingDate = new Date(now);
+      nextBillingDate.setDate(now.getDate() + 30);
+    }
+
+    // Save to database
     let dbSubscription;
     if (existingSub) {
-      // Update existing cancelled subscription
       dbSubscription = await db.subscription.update({
         where: { userId: session.user.id },
         data: {
           plan,
           price: planInfo.price,
+          type: planType,
           status: "pending",
-          razorpaySubId: subscription.id,
+          razorpaySubId,
+          razorpayOrderId,
           razorpayCustomerId: customer.id,
           nextBillingDate,
           nextDeliveryDate,
         },
       });
     } else {
-      // Create new subscription
       dbSubscription = await db.subscription.create({
         data: {
           userId: session.user.id,
           plan,
           price: planInfo.price,
+          type: planType,
           status: "pending",
-          razorpaySubId: subscription.id,
+          razorpaySubId,
+          razorpayOrderId,
           razorpayCustomerId: customer.id,
           nextBillingDate,
           nextDeliveryDate,
@@ -263,11 +300,12 @@ export async function POST(request: NextRequest) {
 
     // Return subscription details and checkout URL
     return NextResponse.json({
-      subscriptionId: subscription.id,
-      shortUrl: subscription.short_url,
+      orderId: razorpayOrderId || razorpaySubId,
+      shortUrl,
       dbSubscription: {
         id: dbSubscription.id,
         plan: dbSubscription.plan,
+        type: dbSubscription.type,
         price: dbSubscription.price,
         status: dbSubscription.status,
         nextBillingDate: dbSubscription.nextBillingDate,

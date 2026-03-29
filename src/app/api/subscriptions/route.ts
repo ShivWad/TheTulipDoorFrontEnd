@@ -69,20 +69,13 @@ const razorpay = new Razorpay({
  * @param type - "recurring" or "one_time"
  * @returns Razorpay plan/price ID
  */
-async function getRazorpayPriceId(planKey: string, type: string) {
+async function getRazorpayPlanId(planKey: string) {
   const dbPlan = await db.subscriptionPlan.findUnique({
     where: { planKey },
   });
 
   if (!dbPlan) {
     throw new Error(`Plan not found: ${planKey}`);
-  }
-
-  if (type === "one_time") {
-    if (!dbPlan.razorpayPriceId) {
-      throw new Error(`Razorpay price ID not configured for one-time: ${planKey}`);
-    }
-    return dbPlan.razorpayPriceId;
   }
 
   if (!dbPlan.razorpayPlanId) {
@@ -315,7 +308,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 7: Create recurring subscription
-    const planId = await getRazorpayPriceId(plan, "recurring");
+    const planId = await getRazorpayPlanId(plan);
     const razorpayResult = await createRecurringSubscription(planId, customer.id);
 
     // Step 8: Save to database
@@ -335,7 +328,6 @@ export async function POST(request: NextRequest) {
       dbSubscription: {
         id: dbSubscription.id,
         plan: dbSubscription.plan,
-        type: (dbSubscription as any).type,
         price: dbSubscription.price,
         status: dbSubscription.status,
         nextBillingDate: dbSubscription.nextBillingDate,

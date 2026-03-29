@@ -9,6 +9,7 @@ const plans = [
     description: "12-15 Stems - Delivered weekly",
     price: 180000, // ₹1800 in paise
     stems: "12-15 Stems",
+    type: "recurring",
   },
   {
     planKey: "studio",
@@ -16,6 +17,7 @@ const plans = [
     description: "24-30 Stems - Delivered weekly",
     price: 340000, // ₹3400 in paise
     stems: "24-30 Stems",
+    type: "recurring",
   },
   {
     planKey: "gallery",
@@ -23,6 +25,15 @@ const plans = [
     description: "40+ Stems - Delivered weekly",
     price: 480000, // ₹4800 in paise
     stems: "40+ Stems",
+    type: "recurring",
+  },
+  {
+    planKey: "one_time",
+    name: "The Curious",
+    description: "12-15 Stems - One-time purchase",
+    price: 180000, // ₹1800 in paise
+    stems: "12-15 Stems",
+    type: "one_time",
   },
 ];
 

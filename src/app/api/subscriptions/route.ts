@@ -301,16 +301,44 @@ export async function POST(request: NextRequest) {
     // Step 6: Get or create Razorpay customer
     let razorpayCustomerId = (user as any).razorpayCustomerId;
     if (!razorpayCustomerId) {
-      const customer = await razorpay.customers.create({
-        name: user.name || "Customer",
-        email: user.email,
-        contact: user.phone || undefined,
-      });
-      razorpayCustomerId = customer.id;
-      await db.user.update({
-        where: { id: session.user.id },
-        data: { razorpayCustomerId } as any,
-      });
+      try {
+        const customer = await razorpay.customers.create({
+          name: user.name || "Customer",
+          email: user.email,
+          contact: user.phone || undefined,
+        });
+        razorpayCustomerId = customer.id;
+        await db.user.update({
+          where: { id: session.user.id },
+          data: { razorpayCustomerId } as any,
+        });
+      } catch (customerError: any) {
+        const errorBody = customerError.response?.body?.error;
+        if (customerError.response?.status === 400 && 
+            errorBody?.code === 'BAD_REQUEST_ERROR' && 
+            errorBody?.description?.includes('Customer already exists')) {
+          const existingCustomer = await razorpay.customers.all({ email: user.email } as any);
+          if (existingCustomer.items.length > 0) {
+            razorpayCustomerId = existingCustomer.items[0].id;
+            await db.user.update({
+              where: { id: session.user.id },
+              data: { razorpayCustomerId } as any,
+            });
+          } else {
+            logger.error({ message: 'Customer creation failed', error: errorBody });
+            return NextResponse.json({
+              error: "Payment setup failed",
+              message: "Unable to create payment account. Please contact support.",
+            }, { status: 400 });
+          }
+        } else {
+          logger.error({ message: 'Customer creation failed', error: errorBody || customerError.message });
+          return NextResponse.json({
+            error: errorBody?.description || "Payment setup failed",
+            message: errorBody?.reason || "Failed to initialize payment",
+          }, { status: 400 });
+        }
+      }
     }
 
     // Step 7: Create recurring subscription
@@ -348,8 +376,6 @@ export async function POST(request: NextRequest) {
         message: razorpayError.reason || "Failed to create subscription",
       }, { status: 400 });
     }
-
-    console.log(">>>>", { message: 'Create subscription error', razorpayError: razorpayError })
 
     logger.error({ message: 'Create subscription error', error: error.message });
     return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });

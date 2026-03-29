@@ -145,8 +145,7 @@ async function createRecurringSubscription(planId: string, customerId: string) {
     total_count: 52,
     quantity: 1,
     customer_id: customerId,
-    start_at: Math.floor(Date.now() / 1000) + 86400,
-    notify_by: 1,
+    start_at: Math.floor(Date.now() / 1000) + 86400
   } as any);
 
   return { 
@@ -313,7 +312,13 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
       console.log(">>>CUSTOMER CREATE",error);
         const razorpayError = error.response?.body?.error;
-        console.error('Razorpay customer create error:', error || razorpayError || error.message);
+        const razorpayBody = error.response?.body;
+        console.error('Razorpay error:', {
+          status: error.response?.status,
+          error: razorpayError,
+          body: razorpayBody,
+          message: error.message
+        });
         
         if (razorpayError?.code === 'BAD_REQUEST_ERROR' && razorpayError?.description?.includes('already exists')) {
           const customers = await razorpay.customers.all({
@@ -374,12 +379,18 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.log(">>>POST SUBCRIPTION CREATE",error);
     const razorpayError = error.response?.body?.error;
-    if (razorpayError) {
-      console.error('Razorpay subscription error:', razorpayError);
-      logger.error({ message: 'Create subscription error', error: razorpayError });
+    const razorpayBody = error.response?.body;
+    if (razorpayError || razorpayBody) {
+      console.error('Razorpay error:', {
+        status: error.response?.status,
+        error: razorpayError,
+        body: razorpayBody,
+        message: error.message
+      });
+      logger.error({ message: 'Create subscription error', error: razorpayError || razorpayBody });
       return NextResponse.json({
-        error: razorpayError.description || "Payment failed",
-        message: razorpayError.reason || "Failed to create subscription",
+        error: razorpayError?.description || razorpayBody?.error?.description || "Payment failed",
+        message: razorpayError?.reason || razorpayBody?.error?.reason || "Failed to create subscription",
       }, { status: 400 });
     }
 

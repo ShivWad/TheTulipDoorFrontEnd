@@ -137,7 +137,13 @@ export async function POST(request: NextRequest) {
       console.log(">>>CUSTOMER CREATE",error);
 
         const razorpayError = error.response?.body?.error;
-        console.error('Razorpay customer create error:', razorpayError || error.message);
+        const razorpayBody = error.response?.body;
+        console.error('Razorpay error:', {
+          status: error.response?.status,
+          error: razorpayError,
+          body: razorpayBody,
+          message: error.message
+        });
         
         if (razorpayError?.code === 'BAD_REQUEST_ERROR' && razorpayError?.description?.includes('already exists')) {
           const customers = await razorpay.customers.all({
@@ -206,12 +212,18 @@ export async function POST(request: NextRequest) {
       console.log(">>>PURCHASE POST ",error);
     
     const razorpayError = error.response?.body?.error;
-    if (razorpayError) {
-      console.error('Razorpay purchase error:', razorpayError);
-      logger.error({ message: 'Create purchase error', error: razorpayError });
+    const razorpayBody = error.response?.body;
+    if (razorpayError || razorpayBody) {
+      console.error('Razorpay error:', {
+        status: error.response?.status,
+        error: razorpayError,
+        body: razorpayBody,
+        message: error.message
+      });
+      logger.error({ message: 'Create purchase error', error: razorpayError || razorpayBody });
       return NextResponse.json({
-        error: razorpayError.description || "Payment failed",
-        message: razorpayError.reason || "Failed to create purchase",
+        error: razorpayError?.description || razorpayBody?.error?.description || "Payment failed",
+        message: razorpayError?.reason || razorpayBody?.error?.reason || "Failed to create purchase",
       }, { status: 400 });
     }
     console.error('Purchase error:', error.message);

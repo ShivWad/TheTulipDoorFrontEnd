@@ -110,7 +110,7 @@ async function validateUserRequirements(userId: string) {
     };
   }
 
-  return { valid: true, user, address };
+  return { valid: true, user: user as any, address };
 }
 
 /**
@@ -300,23 +300,62 @@ export async function POST(request: NextRequest) {
     }
     const user = userCheck.user;
 
-    // Step 6: Create Razorpay customer
-    const customer = await razorpay.customers.create({
-      name: user.name || "Customer",
-      email: user.email,
-      contact: user.phone || undefined,
-    });
+    // Step 6: Get or create Razorpay customer
+    let customerId = (user as any).razorpayCustomerId;
+    if (!customerId) {
+      try {
+        const customer = await razorpay.customers.create({
+          name: user.name || "Customer",
+          email: user.email,
+          contact: user.phone || undefined,
+        });
+        customerId = customer.id;
+        await db.user.update({
+          where: { id: session.user.id },
+          data: { razorpayCustomerId: customerId } as any,
+        });
+      } catch (razorpayError: any) {
+        const errorBody = razorpayError.response?.body?.error || {};
+        if (razorpayError.response?.status === 400 && errorBody.code === 'BAD_REQUEST_ERROR' && errorBody.description?.includes('Customer already exists')) {
+          try {
+            const existingCustomer = await razorpay.customers.all({ email: user.email } as any);
+            if (existingCustomer.items.length > 0) {
+              customerId = existingCustomer.items[0].id;
+              await db.user.update({
+                where: { id: session.user.id },
+                data: { razorpayCustomerId: customerId } as any,
+              });
+            } else {
+              return NextResponse.json({
+                error: "Payment setup failed",
+                message: "Unable to create payment customer. Please contact support.",
+              }, { status: 400 });
+            }
+          } catch {
+            return NextResponse.json({
+              error: "Payment setup failed",
+              message: "Failed to find existing payment account.",
+            }, { status: 400 });
+          }
+        } else {
+          return NextResponse.json({
+            error: errorBody.description || "Payment setup failed",
+            message: errorBody.reason || "Failed to initialize payment",
+          }, { status: 400 });
+        }
+      }
+    }
 
     // Step 7: Create recurring subscription
     const planId = await getRazorpayPlanId(plan);
-    const razorpayResult = await createRecurringSubscription(planId, customer.id);
+    const razorpayResult = await createRecurringSubscription(planId, customerId);
 
     // Step 8: Save to database
     const dbSubscription = await saveSubscription(
       session.user.id, plan, planInfo, existingCheck.existing,
       {
         razorpaySubId: razorpayResult.razorpaySubId,
-        razorpayCustomerId: customer.id,
+        razorpayCustomerId: customerId,
         nextBillingDate: razorpayResult.nextBillingDate,
         nextDeliveryDate: razorpayResult.nextDeliveryDate,
       }
@@ -334,8 +373,16 @@ export async function POST(request: NextRequest) {
         nextDeliveryDate: dbSubscription.nextDeliveryDate,
       },
     });
-  } catch (error) {
-    logger.error({ message: 'Create subscription error', error: (error as Error).message });
+  } catch (error: any) {
+    const razorpayError = error.response?.body?.error;
+    if (razorpayError) {
+      logger.error({ message: 'Create subscription error', error: razorpayError });
+      return NextResponse.json({
+        error: razorpayError.description || "Payment failed",
+        message: razorpayError.reason || "Failed to create subscription",
+      }, { status: 400 });
+    }
+    logger.error({ message: 'Create subscription error', error: error.message });
     return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });
   }
 }

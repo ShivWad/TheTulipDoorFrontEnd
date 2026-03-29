@@ -114,18 +114,58 @@ export async function POST(request: NextRequest) {
         message: userCheck.message,
       }, { status: userCheck.status });
     }
-    const user = userCheck.user;
+    const user = userCheck.user as any;
 
     const planInfo = await db.subscriptionPlan.findUnique({ where: { planKey: "one_time" } });
     if (!planInfo) {
       return NextResponse.json({ error: "One-time purchase not available" }, { status: 400 });
     }
 
-    const customer = await razorpay.customers.create({
-      name: user.name || "Customer",
-      email: user.email,
-      contact: user.phone || undefined,
-    });
+    // Get or create Razorpay customer
+    let customerId = user.razorpayCustomerId;
+    if (!customerId) {
+      try {
+        const customer = await razorpay.customers.create({
+          name: user.name || "Customer",
+          email: user.email,
+          contact: user.phone || undefined,
+        });
+        customerId = customer.id;
+        await db.user.update({
+          where: { id: session.user.id },
+          data: { razorpayCustomerId: customerId } as any,
+        });
+      } catch (razorpayError: any) {
+        const errorBody = razorpayError.response?.body?.error || {};
+        if (razorpayError.response?.status === 400 && errorBody.code === 'BAD_REQUEST_ERROR' && errorBody.description?.includes('Customer already exists')) {
+          try {
+            const existingCustomer = await razorpay.customers.all({ email: user.email } as any);
+            if (existingCustomer.items.length > 0) {
+              customerId = existingCustomer.items[0].id;
+              await db.user.update({
+                where: { id: session.user.id },
+                data: { razorpayCustomerId: customerId } as any,
+              });
+            } else {
+              return NextResponse.json({
+                error: "Payment setup failed",
+                message: "Unable to create payment customer. Please contact support.",
+              }, { status: 400 });
+            }
+          } catch {
+            return NextResponse.json({
+              error: "Payment setup failed",
+              message: "Failed to find existing payment account.",
+            }, { status: 400 });
+          }
+        } else {
+          return NextResponse.json({
+            error: errorBody.description || "Payment setup failed",
+            message: errorBody.reason || "Failed to initialize payment",
+          }, { status: 400 });
+        }
+      }
+    }
 
     const paymentLink = await razorpay.paymentLink.create({
       amount: planInfo.price,
@@ -145,7 +185,7 @@ export async function POST(request: NextRequest) {
         price: planInfo.price,
         status: "pending",
         razorpayPaymentLinkId: paymentLink.id,
-        razorpayCustomerId: customer.id,
+        razorpayCustomerId: customerId,
         nextDeliveryDate: calculateNextDeliveryDate(),
       },
     });
@@ -161,8 +201,16 @@ export async function POST(request: NextRequest) {
         nextDeliveryDate: purchase.nextDeliveryDate,
       },
     });
-  } catch (error) {
-    logger.error({ message: 'Create purchase error', error: (error as Error).message });
+  } catch (error: any) {
+    const razorpayError = error.response?.body?.error;
+    if (razorpayError) {
+      logger.error({ message: 'Create purchase error', error: razorpayError });
+      return NextResponse.json({
+        error: razorpayError.description || "Payment failed",
+        message: razorpayError.reason || "Failed to create purchase",
+      }, { status: 400 });
+    }
+    logger.error({ message: 'Create purchase error', error: error.message });
     return NextResponse.json({ error: "Failed to create purchase" }, { status: 500 });
   }
 }

@@ -360,17 +360,15 @@ export default function RitualsPage() {
         </section>
       )}
 
-      {/* CTA if no subscription */}
-      {!subscriptionData?.hasSubscription && (
-        <section className="mb-16">
-          <button 
-            onClick={() => setShowPlanSelector(true)}
-            className="w-full bg-secondary-container text-on-secondary-container px-8 py-6 font-headline font-black uppercase tracking-widest text-lg"
-          >
-            Start Your Ritual
-          </button>
-        </section>
-      )}
+      {/* CTA - always show to allow one-time purchases */}
+      <section className="mb-16">
+        <button 
+          onClick={() => setShowPlanSelector(true)}
+          className="w-full bg-secondary-container text-on-secondary-container px-8 py-6 font-headline font-black uppercase tracking-widest text-lg"
+        >
+          {subscriptionData?.hasSubscription ? "Buy Another Ritual" : "Start Your Ritual"}
+        </button>
+      </section>
 
       {/* Plan Selector Modal */}
       {showPlanSelector && (

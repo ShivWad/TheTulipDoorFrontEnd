@@ -10,100 +10,120 @@
  * - Verifies webhook signature using HMAC-SHA256
  * - Requires RAZORPAY_WEBHOOK_SECRET environment variable
  * - Implements idempotency to prevent duplicate event processing
+ * - Uses Prisma transactions for atomicity
  * 
  * Supported Events:
- * - subscription.charged: Payment successful - update billing dates
+ * - subscription.charged: Payment successful - update billing dates, create payment record
  * - subscription.paused: Subscription paused - update status
  * - subscription.resumed: Subscription resumed - update status
  * - subscription.cancelled: Subscription cancelled - update status
  * - subscription.authenticated: Subscription activated - set active status
  * - subscription.failed: Payment failed - log for monitoring
+ * - payment.captured: One-time payment successful
+ * - payment_link.paid: Payment Link (one-time) was paid
+ * - payment.refunded: Payment was refunded
  * 
  * Environment Variables:
  * - RAZORPAY_WEBHOOK_SECRET: Secret for signature verification
+ * - NEXT_PUBLIC_APP_URL: App URL for constructing URLs
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { calculateNextDeliveryDate, isDeliveryCutoffPassed } from "@/lib/delivery";
 import crypto from "crypto";
 import logger from "@/lib/logger";
 
-/**
- * TypeScript interface for Razorpay webhook payload structure
- * Defines the shape of expected webhook event data
- */
-interface RazorpayWebhookPayload {
+function calculateNextBillingDate(currentEnd?: number, chargeAt?: number): Date {
+  if (currentEnd) {
+    return new Date(currentEnd * 1000);
+  }
+  if (chargeAt) {
+    const date = new Date(chargeAt * 1000);
+    date.setMonth(date.getMonth() + 1);
+    return date;
+  }
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1);
+  return date;
+}
+
+function validateWebhookPayload(payload: unknown): payload is {
   event: string;
   payload: {
     subscription?: {
-      entity: {
-        id: string;
-        status: string;
-        customer_id: string;
-        plan_id: string;
+      entity?: {
+        id?: string;
+        status?: string;
+        customer_id?: string;
+        plan_id?: string;
         current_start?: number;
+        current_end?: number;
         charge_at?: number;
       };
     };
     payment?: {
-      entity: {
-        id: string;
-        order_id: string;
-        amount: number;
-        status: string;
+      entity?: {
+        id?: string;
+        order_id?: string;
+        amount?: number;
+        status?: string;
+        refunded_at?: number;
       };
     };
     payment_link?: {
-      entity: {
-        id: string;
-        amount: number;
-        status: string;
+      entity?: {
+        id?: string;
+        amount?: number;
+        status?: string;
         customer_id?: string;
       };
     };
+    order?: {
+      entity?: {
+        id?: string;
+        receipt?: string;
+      };
+    };
   };
+} {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  if (!p.event || typeof p.event !== "string") return false;
+  if (!p.payload || typeof p.payload !== "object") return false;
+  return true;
 }
 
-/**
- * Handle incoming Razorpay webhook
- * 
- * Flow:
- * 1. Verify webhook signature (security)
- * 2. Parse event type
- * 3. Update local database based on event
- * 4. Return acknowledgment
- */
 export async function POST(request: NextRequest) {
   try {
-    // 1. Get raw body and signature from headers
     const body = await request.text();
     const signature = request.headers.get("x-razorpay-signature");
 
-    // Check for missing signature
     if (!signature) {
       return NextResponse.json({ error: "No signature" }, { status: 400 });
     }
 
-    // 2. Verify webhook signature
-    // Razorpay signs requests with HMAC-SHA256 using webhook secret
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET!)
       .update(body)
       .digest("hex");
 
-    // Signature mismatch = potential spoofed request
     if (signature !== expectedSignature) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 
-    // 3. Parse and process the payload
-    const payload: RazorpayWebhookPayload = JSON.parse(body);
-    const event = payload.event;
-    const razorpayEventId = payload.payload?.subscription?.entity?.id || 
-                           payload.payload?.payment?.entity?.id ||
-                           `${event}-${Date.now()}`;
+    const payload = JSON.parse(body);
+    
+    if (!validateWebhookPayload(payload)) {
+      logger.error({ message: 'Invalid webhook payload structure' });
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
 
-    // 4. Idempotency check - prevent duplicate processing
+    const razorpayEventId = request.headers.get("x-razorpay-event-id");
+    if (!razorpayEventId) {
+      return NextResponse.json({ error: "No event ID" }, { status: 400 });
+    }
+
     const existingEvent = await db.webhookEvent.findUnique({
       where: { eventId: razorpayEventId },
     });
@@ -113,35 +133,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, skipped: true });
     }
 
-    // Log received event for monitoring
+    logger.info({ event: payload.event, message: 'Razorpay webhook received' });
+
+    const event = payload.event;
+    const subscriptionEntity = payload.payload.subscription?.entity;
+    const paymentEntity = payload.payload.payment?.entity;
+    const paymentLinkEntity = payload.payload.payment_link?.entity;
+
+    if (existingEvent?.processed) {
+      logger.info({ eventId: razorpayEventId, message: 'Webhook already processed, skipping' });
+      return NextResponse.json({ received: true, skipped: true });
+    }
+
     logger.info({ event, message: 'Razorpay webhook received' });
 
-    // 4. Handle different webhook events
+    let result: unknown;
+    
     switch (event) {
-      // subscription.charged: Successful payment
-      // Update next billing and delivery dates
       case "subscription.charged": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
+        if (!subscriptionEntity?.id) break;
+        
+        const subId = subscriptionEntity.id;
+        const currentEnd = subscriptionEntity.current_end;
+        const chargeAt = subscriptionEntity.charge_at;
+        
+        result = await db.$transaction(async (tx) => {
+          const subscription = await tx.subscription.findFirst({
+            where: { razorpaySubId: subId },
+          });
 
-        // Find subscription in our database
-        const subscription = await db.subscription.findFirst({
-          where: { razorpaySubId: subscriptionEntity.id },
-        });
+          if (!subscription) {
+            logger.error({ razorpaySubId: subId, message: 'Subscription not found' });
+            return null;
+          }
 
-        if (subscription) {
-          // Calculate next billing date (30 days from now)
-          const now = new Date();
-          const nextBillingDate = new Date(now);
-          nextBillingDate.setMonth(now.getMonth() + 1);
+          const nextBillingDate = calculateNextBillingDate(currentEnd, chargeAt);
+          const nextDeliveryDate = calculateNextDeliveryDate(chargeAt);
 
-          // Calculate next delivery date (next Saturday)
-          const nextDeliveryDate = new Date(now);
-          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
-          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
-
-          // Update subscription with new dates
-          await db.subscription.update({
+          await tx.subscription.update({
             where: { id: subscription.id },
             data: {
               nextBillingDate,
@@ -150,128 +179,252 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          logger.info(`Subscription ${subscription.id} charged. Next billing: ${nextBillingDate}`);
-        }
+          const order = await tx.order.create({
+            data: {
+              userId: subscription.userId,
+              subscriptionId: subscription.id,
+              orderType: "subscription",
+              status: "pending",
+              total: subscription.price,
+              razorpayOrderId: subId,
+              deliveryDate: nextDeliveryDate,
+            },
+          });
+
+          await tx.payment.create({
+            data: {
+              userId: subscription.userId,
+              orderId: order.id,
+              amount: subscription.price,
+              status: "captured",
+              razorpayPaymentId: subId,
+              razorpayOrderId: subId,
+            },
+          });
+
+          logger.info({ 
+            subscriptionId: subscription.id, 
+            orderId: order.id,
+            nextBilling: nextBillingDate,
+            message: 'Subscription charged, order and payment created' 
+          });
+          
+          return { subscriptionId: subscription.id, orderId: order.id };
+        });
         break;
       }
 
-      // payment.captured: One-time payment successful
       case "payment.captured": {
-        const paymentEntity = payload.payload.payment?.entity;
-        if (!paymentEntity) break;
+        if (!paymentEntity?.order_id || !paymentEntity?.amount || !paymentEntity?.id) break;
+        
+        const payAmount = paymentEntity.amount;
+        const payId = paymentEntity.id;
+        const payOrderId = paymentEntity.order_id;
+        
+        result = await db.$transaction(async (tx) => {
+          const purchase = await tx.oneTimePurchase.findFirst({
+            where: { razorpayPaymentLinkId: payOrderId },
+          });
 
-        // Find subscription by order ID
-        const subscription = await db.subscription.findFirst({
-          where: { razorpayOrderId: paymentEntity.order_id },
-        });
+          if (!purchase) {
+            logger.error({ orderId: payOrderId, message: 'One-time purchase not found' });
+            return null;
+          }
 
-        if (subscription && subscription.type === "one_time") {
-          // Calculate next delivery date (next Saturday)
-          const now = new Date();
-          const nextDeliveryDate = new Date(now);
-          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
-          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
+          const nextDeliveryDate = calculateNextDeliveryDate();
 
-          // Update one-time order to completed
-          await db.subscription.update({
-            where: { id: subscription.id },
+          await tx.oneTimePurchase.update({
+            where: { id: purchase.id },
             data: {
               status: "completed",
+              razorpayPaymentId: payId,
               nextDeliveryDate,
             },
           });
 
-          logger.info(`One-time payment ${paymentEntity.id} captured for subscription ${subscription.id}`);
-        }
+          const order = await tx.order.create({
+            data: {
+              userId: purchase.userId,
+              orderType: "one_time",
+              status: "pending",
+              total: purchase.price,
+              razorpayOrderId: payOrderId,
+              razorpayPaymentId: payId,
+              deliveryDate: nextDeliveryDate,
+            },
+          });
+
+          await tx.payment.create({
+            data: {
+              userId: purchase.userId,
+              orderId: order.id,
+              amount: payAmount,
+              status: "captured",
+              razorpayPaymentId: payId,
+              razorpayOrderId: payOrderId,
+            },
+          });
+
+          logger.info({ 
+            purchaseId: purchase.id, 
+            orderId: order.id,
+            paymentId: payId,
+            message: 'One-time payment captured, order and payment created' 
+          });
+          
+          return { purchaseId: purchase.id, orderId: order.id, paymentId: payId };
+        });
         break;
       }
 
-      // payment_link.paid: Payment Link (one-time) was paid
       case "payment_link.paid": {
-        const paymentLinkEntity = payload.payload.payment_link?.entity;
-        if (!paymentLinkEntity) break;
+        if (!paymentLinkEntity?.id || !paymentLinkEntity?.amount) break;
+        
+        const plAmount = paymentLinkEntity.amount;
+        const plId = paymentLinkEntity.id;
+        const actualPaymentId = paymentEntity?.id || plId;
+        
+        result = await db.$transaction(async (tx) => {
+          const purchase = await tx.oneTimePurchase.findFirst({
+            where: { razorpayPaymentLinkId: plId },
+          });
 
-        // Find subscription by payment link ID (stored in razorpayOrderId)
-        const subscription = await db.subscription.findFirst({
-          where: { razorpayOrderId: paymentLinkEntity.id },
-        });
+          if (!purchase) {
+            logger.error({ paymentLinkId: plId, message: 'One-time purchase not found' });
+            return null;
+          }
 
-        if (subscription && subscription.type === "one_time") {
-          // Calculate next delivery date (next Saturday)
-          const now = new Date();
-          const nextDeliveryDate = new Date(now);
-          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
-          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
+          const nextDeliveryDate = calculateNextDeliveryDate();
 
-          // Update one-time order to completed
-          await db.subscription.update({
-            where: { id: subscription.id },
+          await tx.oneTimePurchase.update({
+            where: { id: purchase.id },
             data: {
               status: "completed",
+              razorpayPaymentId: actualPaymentId,
               nextDeliveryDate,
             },
           });
 
-          logger.info(`Payment Link ${paymentLinkEntity.id} paid for subscription ${subscription.id}`);
-        }
+          const order = await tx.order.create({
+            data: {
+              userId: purchase.userId,
+              orderType: "one_time",
+              status: "pending",
+              total: purchase.price,
+              razorpayOrderId: plId,
+              razorpayPaymentId: actualPaymentId,
+              deliveryDate: nextDeliveryDate,
+            },
+          });
+
+          await tx.payment.create({
+            data: {
+              userId: purchase.userId,
+              orderId: order.id,
+              amount: plAmount,
+              status: "captured",
+              razorpayPaymentId: actualPaymentId,
+              razorpayOrderId: plId,
+            },
+          });
+
+          logger.info({ 
+            purchaseId: purchase.id, 
+            orderId: order.id,
+            paymentId: actualPaymentId,
+            message: 'Payment Link paid, order and payment created' 
+          });
+          
+          return { purchaseId: purchase.id, orderId: order.id, paymentId: actualPaymentId };
+        });
         break;
       }
 
-      // subscription.paused: Subscription was paused
-      case "subscription.paused": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
+      case "payment.refunded": {
+        if (!paymentEntity?.id) break;
+        
+        const refundPaymentId = paymentEntity.id;
+        
+        result = await db.$transaction(async (tx) => {
+          const payment = await tx.payment.findFirst({
+            where: { razorpayPaymentId: refundPaymentId },
+          });
 
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: { status: "refunded" },
+            });
+          }
+
+          if (payment?.orderId) {
+            await tx.order.update({
+              where: { id: payment.orderId },
+              data: { status: "refunded" },
+            });
+          }
+
+          logger.info({ 
+            paymentId: refundPaymentId,
+            message: 'Payment refunded' 
+          });
+          
+          return { paymentId: refundPaymentId, refunded: !!payment };
+        });
+        break;
+      }
+
+      case "subscription.paused": {
+        if (!subscriptionEntity?.id) break;
+        
         await db.subscription.updateMany({
           where: { razorpaySubId: subscriptionEntity.id },
           data: { status: "paused" },
         });
+        result = { status: "paused" };
         break;
       }
 
-      // subscription.resumed: Subscription was resumed
       case "subscription.resumed": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
-
+        if (!subscriptionEntity?.id) break;
+        
         await db.subscription.updateMany({
           where: { razorpaySubId: subscriptionEntity.id },
           data: { status: "active" },
         });
+        result = { status: "resumed" };
         break;
       }
 
-      // subscription.cancelled: Subscription was cancelled
       case "subscription.cancelled": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
-
+        if (!subscriptionEntity?.id) break;
+        
         await db.subscription.updateMany({
           where: { razorpaySubId: subscriptionEntity.id },
           data: { status: "cancelled" },
         });
+        result = { status: "cancelled" };
         break;
       }
 
-      // subscription.authenticated: Subscription was activated/confirmed
       case "subscription.authenticated": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
+        if (!subscriptionEntity?.id) break;
+        
+        const authSubId = subscriptionEntity.id;
+        const currentEnd = subscriptionEntity.current_end;
+        const chargeAt = subscriptionEntity.charge_at;
+        
+        result = await db.$transaction(async (tx) => {
+          const subscription = await tx.subscription.findFirst({
+            where: { razorpaySubId: authSubId },
+          });
 
-        const subscription = await db.subscription.findFirst({
-          where: { razorpaySubId: subscriptionEntity.id },
-        });
+          if (!subscription) return null;
 
-        if (subscription) {
-          const now = new Date();
-          const nextBillingDate = new Date(now);
-          nextBillingDate.setMonth(now.getMonth() + 1);
+          const nextBillingDate = calculateNextBillingDate(currentEnd, chargeAt);
+          const nextDeliveryDate = calculateNextDeliveryDate(chargeAt);
 
-          const nextDeliveryDate = new Date(now);
-          const daysUntilSaturday = (6 - nextDeliveryDate.getDay() + 7) % 7 || 7;
-          nextDeliveryDate.setDate(now.getDate() + daysUntilSaturday);
-
-          await db.subscription.update({
+          await tx.subscription.update({
             where: { id: subscription.id },
             data: {
               status: "active",
@@ -279,25 +432,25 @@ export async function POST(request: NextRequest) {
               nextDeliveryDate,
             },
           });
-        }
+
+          return { subscriptionId: subscription.id };
+        });
         break;
       }
 
-      // subscription.failed: Payment attempt failed
       case "subscription.failed": {
-        const subscriptionEntity = payload.payload.subscription?.entity;
-        if (!subscriptionEntity) break;
-
+        if (!subscriptionEntity?.id) break;
+        
         logger.info({ subscriptionId: subscriptionEntity.id, message: 'Subscription payment failed' });
+        result = { status: "failed" };
         break;
       }
 
-      // Handle unknown events gracefully
       default:
         logger.info({ event, message: 'Unhandled webhook event' });
+        result = { unhandled: true };
     }
 
-    // Record event for idempotency
     await db.webhookEvent.upsert({
       where: { eventId: razorpayEventId },
       create: {
@@ -310,10 +463,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Return 200 to acknowledge webhook receipt
-    return NextResponse.json({ received: true });
+    return NextResponse.json({ received: true, result });
   } catch (error) {
-    // Log error for debugging
     logger.error({ message: 'Webhook error', error: (error as Error).message });
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }

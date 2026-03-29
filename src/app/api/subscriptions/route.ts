@@ -39,7 +39,7 @@ import logger from "@/lib/logger";
  * Validates plan selection and optional phone
  */
 const subscriptionSchema = z.object({
-  plan: z.enum(["solo", "studio", "gallery", "one_time"]),
+  plan: z.enum(["solo", "studio", "gallery"]),
   phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number").optional(),
 });
 
@@ -122,9 +122,11 @@ async function validateUserRequirements(userId: string) {
 
 /**
  * Check if user already has an active subscription
+ * Blocks if active/pending/paused
  */
 async function checkExistingSubscription(userId: string) {
   const existing = await db.subscription.findUnique({ where: { userId } });
+  
   if (existing && existing.status !== "cancelled" && existing.status !== "completed") {
     return { blocked: true, error: "You already have an active subscription", status: 400 };
   }
@@ -139,30 +141,6 @@ function getNextDeliveryDate() {
   const days = (6 - date.getDay() + 7) % 7 || 7;
   date.setDate(date.getDate() + days);
   return date;
-}
-
-/**
- * Create one-time payment link
- */
-async function createOneTimePayment(planInfo: { price: number; name: string }, planKey: string, userId: string, user: { email: string; phone: string | null }) {
-  const paymentLink = await razorpay.paymentLink.create({
-    amount: planInfo.price,
-    currency: "INR",
-    accept_partial: false,
-    description: `${planInfo.name} - One-time purchase`,
-    customer: { email: user.email, contact: user.phone || undefined },
-    notes: { planKey, type: "one_time", userId },
-    callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account/rituals?payment=success`,
-    callback_method: "get",
-  } as any);
-
-  return { 
-    razorpayOrderId: paymentLink.id, 
-    shortUrl: paymentLink.short_url, 
-    nextDeliveryDate: getNextDeliveryDate(),
-    razorpaySubId: null as string | null,
-    nextBillingDate: null as Date | null
-  };
 }
 
 /**
@@ -183,7 +161,6 @@ async function createRecurringSubscription(planId: string, customerId: string) {
     shortUrl: subscription.short_url, 
     nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     nextDeliveryDate: getNextDeliveryDate(),
-    razorpayOrderId: null as string | null
   };
 }
 
@@ -194,20 +171,17 @@ async function saveSubscription(
   userId: string,
   plan: string,
   planInfo: { price: number },
-  planType: string,
   existingSub: { id: string } | null | undefined,
   razorpayData: {
     razorpaySubId: string | null;
-    razorpayOrderId: string | null;
     razorpayCustomerId: string;
     nextBillingDate: Date | null;
     nextDeliveryDate: Date;
   }
 ) {
   const data = {
-    userId, plan, price: planInfo.price, type: planType, status: "pending" as const,
+    userId, plan, price: planInfo.price, status: "pending" as const,
     razorpaySubId: razorpayData.razorpaySubId,
-    razorpayOrderId: razorpayData.razorpayOrderId,
     razorpayCustomerId: razorpayData.razorpayCustomerId,
     nextBillingDate: razorpayData.nextBillingDate,
     nextDeliveryDate: razorpayData.nextDeliveryDate,
@@ -308,13 +282,21 @@ export async function POST(request: NextRequest) {
     }
     const { plan } = validation.data;
 
-    // Step 3: Check existing subscription
+    // Step 3: Get plan details
+    const planInfo = await db.subscriptionPlan.findUnique({ where: { planKey: plan } });
+    if (!planInfo) {
+      return NextResponse.json({ error: "Invalid plan selected" }, { status: 400 });
+    }
+
+    const planType = planInfo.type || "recurring";
+
+    // Step 4: Check existing subscription
     const existingCheck = await checkExistingSubscription(session.user.id);
     if (existingCheck.blocked) {
       return NextResponse.json({ error: existingCheck.error }, { status: existingCheck.status });
     }
 
-    // Step 4: Validate user requirements
+    // Step 5: Validate user requirements
     const userCheck = await validateUserRequirements(session.user.id);
     if (!userCheck.valid || !userCheck.user) {
       return NextResponse.json({
@@ -325,14 +307,6 @@ export async function POST(request: NextRequest) {
     }
     const user = userCheck.user;
 
-    // Step 5: Get plan details
-    const planInfo = await db.subscriptionPlan.findUnique({ where: { planKey: plan } });
-    if (!planInfo) {
-      return NextResponse.json({ error: "Invalid plan selected" }, { status: 400 });
-    }
-
-    const planType = planInfo.type || "recurring";
-
     // Step 6: Create Razorpay customer
     const customer = await razorpay.customers.create({
       name: user.name || "Customer",
@@ -340,21 +314,15 @@ export async function POST(request: NextRequest) {
       contact: user.phone || undefined,
     });
 
-    // Step 7: Create payment based on type
-    let razorpayResult: any;
-    if (planType === "one_time") {
-      razorpayResult = await createOneTimePayment(planInfo, plan, session.user.id, user);
-    } else {
-      const planId = await getRazorpayPriceId(plan, "recurring");
-      razorpayResult = await createRecurringSubscription(planId, customer.id);
-    }
+    // Step 7: Create recurring subscription
+    const planId = await getRazorpayPriceId(plan, "recurring");
+    const razorpayResult = await createRecurringSubscription(planId, customer.id);
 
     // Step 8: Save to database
     const dbSubscription = await saveSubscription(
-      session.user.id, plan, planInfo, planType, existingCheck.existing,
+      session.user.id, plan, planInfo, existingCheck.existing,
       {
         razorpaySubId: razorpayResult.razorpaySubId,
-        razorpayOrderId: razorpayResult.razorpayOrderId,
         razorpayCustomerId: customer.id,
         nextBillingDate: razorpayResult.nextBillingDate,
         nextDeliveryDate: razorpayResult.nextDeliveryDate,
@@ -362,7 +330,7 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json({
-      orderId: razorpayResult.razorpayOrderId || razorpayResult.razorpaySubId,
+      orderId: razorpayResult.razorpaySubId,
       shortUrl: razorpayResult.shortUrl,
       dbSubscription: {
         id: dbSubscription.id,

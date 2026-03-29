@@ -8,18 +8,18 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  password     String
-  name         String?
-  phone        String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  isAdmin      Boolean       @default(false)
-  addresses    Address[]
-  orders       Order[]
-  payments     Payment[]
-  subscription Subscription?
+  id              String           @id @default(cuid())
+  email           String           @unique
+  password        String
+  name            String?
+  phone           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  isAdmin         Boolean          @default(false)
+  addresses       Address[]
+  orders          Order[]
+  payments        Payment[]
+  subscription    Subscription?
 }
 
 model Address {
@@ -43,10 +43,8 @@ model Subscription {
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan                String    // solo, studio, gallery
   price               Int       // in paise ( INR * 100 )
-  type                String    @default("recurring") // recurring or one_time
-  status              String    @default("pending") // pending, active, paused, cancelled, completed
-  razorpaySubId       String?   // razorpay subscription id (for recurring)
-  razorpayOrderId     String?   // razorpay order id (for one-time)
+  status              String    @default("pending") // pending, active, paused, cancelled
+  razorpaySubId       String?   @unique // razorpay subscription id
   razorpayCustomerId  String?   // razorpay customer id
   nextBillingDate     DateTime?
   nextDeliveryDate    DateTime?
@@ -80,14 +78,14 @@ model Order {
 model Payment {
   id                String   @id @default(cuid())
   userId            String
-  orderId           String
+  orderId           String?
   amount            Int
   currency          String   @default("INR")
   status            String
   razorpayPaymentId String?
   razorpayOrderId   String?
   createdAt         DateTime @default(now())
-  order             Order    @relation(fields: [orderId], references: [id])
+  order             Order?   @relation(fields: [orderId], references: [id])
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -132,4 +130,20 @@ model SubscriptionPlan {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model OneTimePurchase {
+  id                  String    @id @default(cuid())
+  userId              String
+  planKey             String
+  price               Int
+  status              String    @default("pending") // pending, completed, cancelled
+  razorpayPaymentLinkId String?  @unique // Payment Link ID
+  razorpayPaymentId   String?   // Actual payment ID after completion
+  razorpayCustomerId  String?
+  nextDeliveryDate    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([userId])
 }

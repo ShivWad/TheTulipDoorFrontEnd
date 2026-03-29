@@ -28,9 +28,23 @@ interface SubscriptionData {
   };
 }
 
+interface PurchaseData {
+  hasPurchase: boolean;
+  purchase?: {
+    id: string;
+    plan: string;
+    planName: string;
+    price: number;
+    status: string;
+    nextDeliveryDate: string | null;
+    createdAt: string;
+  };
+}
+
 export default function RitualsPage() {
   const { data: session } = useSession();
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
+  const [purchaseData, setPurchaseData] = useState<PurchaseData | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPlanSelector, setShowPlanSelector] = useState(false);
@@ -59,9 +73,14 @@ export default function RitualsPage() {
 
   const fetchSubscription = async () => {
     try {
-      const res = await fetch("/api/subscriptions");
-      const data = await res.json();
-      setSubscriptionData(data);
+      const [subRes, purchaseRes] = await Promise.all([
+        fetch("/api/subscriptions"),
+        fetch("/api/purchases"),
+      ]);
+      const subData = await subRes.json();
+      const purchaseData = await purchaseRes.json();
+      setSubscriptionData(subData);
+      setPurchaseData(purchaseData);
     } catch (error) {
       console.error("Error fetching subscription:", error);
     } finally {
@@ -69,12 +88,15 @@ export default function RitualsPage() {
     }
   };
 
-  const handleSubscribe = async (planKey: string) => {
+  const handleSubscribe = async (planKey: string, type: string) => {
     setProcessing(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const res = await fetch("/api/subscriptions", {
+      const isOneTime = type === "one_time";
+      const endpoint = isOneTime ? "/api/purchases" : "/api/subscriptions";
+      
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: planKey }),
@@ -86,12 +108,11 @@ export default function RitualsPage() {
         if (data.shortUrl) {
           window.location.href = data.shortUrl;
         } else {
-          setMessage({ type: "success", text: "Subscription created successfully!" });
+          setMessage({ type: "success", text: isOneTime ? "Purchase created successfully!" : "Subscription created successfully!" });
           fetchSubscription();
           setShowPlanSelector(false);
         }
       } else {
-        // Handle missing required information
         if (data.details) {
           const missingText = data.details.join(", ");
           setMessage({ 
@@ -99,7 +120,7 @@ export default function RitualsPage() {
             text: `Please add: ${missingText}. Go to Profile to add missing information.` 
           });
         } else {
-          setMessage({ type: "error", text: data.error || "Failed to create subscription" });
+          setMessage({ type: "error", text: data.error || `Failed to create ${isOneTime ? "purchase" : "subscription"}` });
         }
       }
     } catch {
@@ -201,9 +222,7 @@ export default function RitualsPage() {
                   {subscriptionData.subscription.planName}
                 </p>
                 <p className="font-body text-sm opacity-80 mt-2">
-                  {subscriptionData.subscription.type === "one_time" 
-                    ? formatPrice(subscriptionData.subscription.price)
-                    : `${formatPrice(subscriptionData.subscription.price)} / month`}
+                  {formatPrice(subscriptionData.subscription.price)} / month
                 </p>
               </div>
               <span className="bg-secondary-container text-on-secondary-container px-4 py-2 font-headline font-bold text-sm uppercase tracking-widest">
@@ -219,29 +238,25 @@ export default function RitualsPage() {
                     : "N/A"}
                 </p>
               </div>
-              {subscriptionData.subscription.type !== "one_time" && (
-                <>
-                  <div>
-                    <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Next Billing</p>
-                    <p className="font-body text-lg mt-1">
-                      {subscriptionData.subscription.nextBillingDate 
-                        ? formatDate(subscriptionData.subscription.nextBillingDate)
-                        : "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Slot</p>
-                    <p className="font-body text-lg mt-1">Saturday Morning</p>
-                  </div>
-                </>
-              )}
+              <div>
+                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Next Billing</p>
+                <p className="font-body text-lg mt-1">
+                  {subscriptionData.subscription.nextBillingDate 
+                    ? formatDate(subscriptionData.subscription.nextBillingDate)
+                    : "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Slot</p>
+                <p className="font-body text-lg mt-1">Saturday</p>
+              </div>
               <div>
                 <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Status</p>
                 <p className="font-body text-lg mt-1 capitalize">{subscriptionData.subscription.status}</p>
               </div>
             </div>
 
-            {subscriptionData.subscription.status !== "cancelled" && subscriptionData.subscription.status !== "completed" && subscriptionData.subscription.type !== "one_time" && (
+            {subscriptionData.subscription.status !== "cancelled" && (
               <div className="relative">
                 <button 
                   onClick={() => setShowManageMenu(!showManageMenu)}
@@ -300,6 +315,63 @@ export default function RitualsPage() {
         )}
       </section>
 
+      {/* Active One-Time Purchase */}
+      {purchaseData?.hasPurchase && purchaseData.purchase?.status === "completed" && (
+        <section className="mb-16">
+          <div className="bg-secondary-container p-8">
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <p className="font-headline font-black text-3xl tracking-tighter uppercase">
+                  {purchaseData.purchase.planName}
+                </p>
+                <p className="font-body text-sm opacity-80 mt-2">
+                  {formatPrice(purchaseData.purchase.price)}
+                </p>
+              </div>
+              <span className="bg-primary text-on-primary px-4 py-2 font-headline font-bold text-sm uppercase tracking-widest">
+                Completed
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div>
+                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Date</p>
+                <p className="font-body text-lg mt-1">
+                  {purchaseData.purchase.nextDeliveryDate 
+                    ? formatDate(purchaseData.purchase.nextDeliveryDate)
+                    : "Delivered"}
+                </p>
+              </div>
+              <div>
+                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Delivery Slot</p>
+                <p className="font-body text-lg mt-1">Saturday</p>
+              </div>
+              <div>
+                <p className="font-headline font-bold text-xs uppercase tracking-widest opacity-60">Purchased</p>
+                <p className="font-body text-lg mt-1">
+                  {new Date(purchaseData.purchase.createdAt).toLocaleDateString("en-IN", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* CTA if no subscription */}
+      {!subscriptionData?.hasSubscription && (
+        <section className="mb-16">
+          <button 
+            onClick={() => setShowPlanSelector(true)}
+            className="w-full bg-secondary-container text-on-secondary-container px-8 py-6 font-headline font-black uppercase tracking-widest text-lg"
+          >
+            Start Your Ritual
+          </button>
+        </section>
+      )}
+
       {/* Plan Selector Modal */}
       {showPlanSelector && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -332,7 +404,7 @@ export default function RitualsPage() {
                   {recurringPlans.map((plan) => (
                     <button
                       key={plan.id}
-                      onClick={() => handleSubscribe(plan.planKey)}
+                      onClick={() => handleSubscribe(plan.planKey, plan.type)}
                       disabled={processing}
                       className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
                     >
@@ -359,7 +431,7 @@ export default function RitualsPage() {
                   {oneTimePlans.map((plan) => (
                     <button
                       key={plan.id}
-                      onClick={() => handleSubscribe(plan.planKey)}
+                      onClick={() => handleSubscribe(plan.planKey, plan.type)}
                       disabled={processing}
                       className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
                     >
@@ -386,14 +458,16 @@ export default function RitualsPage() {
 
       {/* Past Drops */}
       <section>
-        <h2 className="font-headline font-black text-2xl uppercase tracking-widest mb-8">Past Drops</h2>
-        {subscriptionData?.hasSubscription ? (
-          <div className="bg-surface-container-lowest p-8 border-l-4 border-secondary-container">
-            <div className="flex items-center justify-between mb-4">
+        <h2 className="font-headline font-black text-2xl uppercase tracking-widest mb-8">Your Floral Journey</h2>
+        
+        {/* Subscription Start */}
+        {subscriptionData?.hasSubscription && subscriptionData.subscription && (
+          <div className="bg-surface-container-lowest p-8 border-l-4 border-secondary-container mb-4">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="font-headline font-bold text-lg uppercase">Your subscription started</p>
+                <p className="font-headline font-bold text-lg uppercase">Monthly Subscription Started</p>
                 <p className="font-body text-sm text-zinc-500 mt-1">
-                  {subscriptionData.subscription?.createdAt 
+                  {subscriptionData.subscription.createdAt 
                     ? new Date(subscriptionData.subscription.createdAt).toLocaleDateString("en-IN", {
                         year: "numeric",
                         month: "long",
@@ -403,11 +477,38 @@ export default function RitualsPage() {
                 </p>
               </div>
               <span className="text-secondary-container font-headline font-bold text-sm uppercase tracking-widest">
-                Active
+                {subscriptionData.subscription.status}
               </span>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* Completed Purchases */}
+        {purchaseData?.hasPurchase && purchaseData.purchase?.status === "completed" && (
+          <div className="bg-surface-container-lowest p-8 border-l-4 border-primary mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-headline font-bold text-lg uppercase">One-Time Ritual</p>
+                <p className="font-body text-sm text-zinc-500 mt-1">
+                  {purchaseData.purchase.planName} - {formatPrice(purchaseData.purchase.price)}
+                </p>
+                <p className="font-body text-sm text-zinc-400 mt-1">
+                  Purchased: {new Date(purchaseData.purchase.createdAt).toLocaleDateString("en-IN", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
+              </div>
+              <span className="text-primary font-headline font-bold text-sm uppercase tracking-widest">
+                Completed
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!subscriptionData?.hasSubscription && !purchaseData?.hasPurchase && (
           <div className="bg-surface-container p-12 text-center">
             <div className="w-20 h-20 bg-primary-container mx-auto mb-6 rounded-full flex items-center justify-center">
               <span className="material-symbols-outlined text-4xl text-primary">local_florist</span>
@@ -415,7 +516,7 @@ export default function RitualsPage() {
             <h3 className="font-headline font-black text-2xl uppercase mb-4">Drops Coming Soon</h3>
             <p className="text-zinc-500 max-w-md mx-auto">
               Your first floral delivery will appear here once your subscription begins. 
-              Get ready for weekly bursts of creativity delivered to your door.
+              All deliveries are scheduled for <span className="font-bold">Saturdays</span>.
             </p>
           </div>
         )}

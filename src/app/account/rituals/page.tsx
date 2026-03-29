@@ -59,6 +59,18 @@ export default function RitualsPage() {
     }
   }, [session]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment');
+    if (paymentStatus === 'success') {
+      setMessage({ type: 'success', text: 'Payment successful! Your ritual has been confirmed.' });
+      window.history.replaceState({}, '', '/account/rituals');
+    } else if (paymentStatus === 'failed') {
+      setMessage({ type: 'error', text: 'Payment failed. Please try again.' });
+      window.history.replaceState({}, '', '/account/rituals');
+    }
+  }, []);
+
   const fetchPlans = async () => {
     try {
       const res = await fetch("/api/plans");

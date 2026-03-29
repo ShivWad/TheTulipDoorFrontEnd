@@ -122,49 +122,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create Razorpay customer
-    let customerId = user.razorpayCustomerId;
-    if (!customerId) {
-      try {
-        const customer = await razorpay.customers.create({
-          name: user.name || "Customer",
-          email: user.email,
-          contact: user.phone || undefined,
-        });
-        customerId = customer.id;
-        await db.user.update({
-          where: { id: session.user.id },
-          data: { razorpayCustomerId: customerId } as any,
-        });
-      } catch (razorpayError: any) {
-        const errorBody = razorpayError.response?.body?.error || {};
-        if (razorpayError.response?.status === 400 && errorBody.code === 'BAD_REQUEST_ERROR' && errorBody.description?.includes('Customer already exists')) {
-          try {
-            const existingCustomer = await razorpay.customers.all({ email: user.email } as any);
-            if (existingCustomer.items.length > 0) {
-              customerId = existingCustomer.items[0].id;
-              await db.user.update({
-                where: { id: session.user.id },
-                data: { razorpayCustomerId: customerId } as any,
-              });
-            } else {
-              return NextResponse.json({
-                error: "Payment setup failed",
-                message: "Unable to create payment customer. Please contact support.",
-              }, { status: 400 });
-            }
-          } catch {
-            return NextResponse.json({
-              error: "Payment setup failed",
-              message: "Failed to find existing payment account.",
-            }, { status: 400 });
-          }
-        } else {
-          return NextResponse.json({
-            error: errorBody.description || "Payment setup failed",
-            message: errorBody.reason || "Failed to initialize payment",
-          }, { status: 400 });
-        }
-      }
+    let razorpayCustomerId = user.razorpayCustomerId;
+    if (!razorpayCustomerId) {
+      const customer = await razorpay.customers.create({
+        name: user.name || "Customer",
+        email: user.email,
+        contact: user.phone || undefined,
+      });
+      razorpayCustomerId = customer.id;
+      await db.user.update({
+        where: { id: session.user.id },
+        data: { razorpayCustomerId } as any,
+      });
     }
 
     const paymentLink = await razorpay.paymentLink.create({
@@ -185,7 +154,6 @@ export async function POST(request: NextRequest) {
         price: planInfo.price,
         status: "pending",
         razorpayPaymentLinkId: paymentLink.id,
-        razorpayCustomerId: customerId,
         nextDeliveryDate: calculateNextDeliveryDate(),
       },
     });

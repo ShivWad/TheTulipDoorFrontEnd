@@ -46,7 +46,6 @@ model Subscription {
   price               Int       // in paise ( INR * 100 )
   status              String    @default("pending") // pending, active, paused, cancelled
   razorpaySubId       String?   @unique // razorpay subscription id
-  razorpayCustomerId  String?   // razorpay customer id
   nextBillingDate     DateTime?
   nextDeliveryDate    DateTime?
   createdAt           DateTime  @default(now())
@@ -141,7 +140,6 @@ model OneTimePurchase {
   status              String    @default("pending") // pending, completed, cancelled
   razorpayPaymentLinkId String?  @unique // Payment Link ID
   razorpayPaymentId   String?   // Actual payment ID after completion
-  razorpayCustomerId  String?
   nextDeliveryDate    DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt

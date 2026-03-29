@@ -15,13 +15,20 @@ export default function AccountPage() {
     phone: "",
   });
 
+  const [originalData, setOriginalData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
+
   useEffect(() => {
     if (session?.user) {
-      setFormData({
-        name: session.user.name || "",
-        email: session.user.email || "",
-        phone: "",
-      });
+      const phone = (session.user as any).phone || "";
+      const name = session.user.name || "";
+      const email = session.user.email || "";
+      
+      setFormData({ name, email, phone });
+      setOriginalData({ name, email, phone });
       setLoading(false);
     }
   }, [session]);
@@ -30,8 +37,18 @@ export default function AccountPage() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const hasChanges = () => {
+    return formData.name !== originalData.name || formData.phone !== originalData.phone;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!hasChanges()) {
+      setMessage({ type: "error", text: "No changes to save" });
+      return;
+    }
+    
     setSaving(true);
     setMessage({ type: "", text: "" });
 
@@ -47,6 +64,7 @@ export default function AccountPage() {
 
       if (res.ok) {
         setMessage({ type: "success", text: "Profile updated successfully" });
+        setOriginalData({ ...formData });
         await updateSession();
       } else {
         const data = await res.json();
@@ -147,8 +165,8 @@ export default function AccountPage() {
           </button>
           <button 
             type="submit"
-            disabled={saving}
-            className="relative bg-secondary-container text-on-secondary-container font-headline font-black uppercase text-xl px-12 py-6 group transition-all disabled:opacity-50"
+            disabled={saving || !hasChanges()}
+            className="relative bg-secondary-container text-on-secondary-container font-headline font-black uppercase text-xl px-12 py-6 group transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="absolute inset-0 bg-primary -z-10 translate-x-1 translate-y-1 group-hover:translate-x-2 group-hover:translate-y-2 transition-transform"></div>
             {saving ? "Saving..." : "Update Account"}

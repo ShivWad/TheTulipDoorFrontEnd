@@ -396,6 +396,16 @@ export default function RitualsPage() {
               </div>
             )}
 
+            {/* Loading Overlay */}
+            {processing && (
+              <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-10">
+                <div className="bg-surface-container-lowest px-8 py-4 rounded-lg flex items-center gap-3">
+                  <span className="material-symbols-outlined text-primary animate-spin">sync</span>
+                  <span className="font-headline font-bold">Processing...</span>
+                </div>
+              </div>
+            )}
+
             {/* Recurring Plans */}
             {recurringPlans.length > 0 && (
               <>
@@ -406,7 +416,7 @@ export default function RitualsPage() {
                       key={plan.id}
                       onClick={() => handleSubscribe(plan.planKey, plan.type)}
                       disabled={processing}
-                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
+                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div>
                         <h3 className="text-2xl font-bold uppercase">{plan.name}</h3>
@@ -433,7 +443,7 @@ export default function RitualsPage() {
                       key={plan.id}
                       onClick={() => handleSubscribe(plan.planKey, plan.type)}
                       disabled={processing}
-                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50"
+                      className="border-2 border-primary p-6 hover:bg-secondary-container transition-colors cursor-pointer flex flex-col justify-between aspect-[3/4] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div>
                         <h3 className="text-2xl font-bold uppercase">{plan.name}</h3>

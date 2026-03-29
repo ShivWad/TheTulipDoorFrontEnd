@@ -74,6 +74,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           id: user.id,
           email: user.email,
           name: user.name,
+          phone: user.phone,
           isAdmin: user.isAdmin,
         };
       },
@@ -83,22 +84,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // Callbacks for JWT and session customization
   callbacks: {
     /**
-     * JWT callback - adds user ID and isAdmin to token
+     * JWT callback - adds user ID, isAdmin, and phone to token
      */
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.isAdmin = (user as any).isAdmin;
+        token.phone = (user as any).phone;
       }
       return token;
     },
     /**
-     * Session callback - adds user ID and isAdmin from token to session
+     * Session callback - adds user ID, isAdmin, and phone from token to session
      */
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
         (session.user as any).isAdmin = token.isAdmin as boolean;
+        (session.user as any).phone = token.phone as string;
       }
       return session;
     },

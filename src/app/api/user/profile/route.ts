@@ -141,22 +141,30 @@ export async function PUT(request: NextRequest) {
       // Hash new password and update
       const hashedPassword = await bcrypt.hash(newPassword, 12);
 
+      const updateData: any = {
+        name,
+        password: hashedPassword,
+      };
+      if (phone) {
+        updateData.phone = phone;
+      }
+
       await db.user.update({
         where: { id: session.user.id },
-        data: {
-          name,
-          phone,
-          password: hashedPassword,
-        },
+        data: updateData,
       });
     } else {
       // Update without password change
+      const updateData: any = {
+        name,
+      };
+      if (phone) {
+        updateData.phone = phone;
+      }
+
       await db.user.update({
         where: { id: session.user.id },
-        data: {
-          name,
-          phone,
-        },
+        data: updateData,
       });
     }
 

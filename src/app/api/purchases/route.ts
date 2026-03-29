@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getCallbackUrl } from "@/lib/app-url";
 import { calculateNextDeliveryDate } from "@/lib/delivery";
 import Razorpay from "razorpay";
 import { z } from "zod";
@@ -191,7 +192,7 @@ export async function POST(request: NextRequest) {
       description: `${planInfo.name} - One-time purchase`,
       customer: { email: user.email, contact: user.phone || undefined },
       notes: { planKey: "one_time", type: "one_time", userId: session.user.id },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account/rituals?payment=success`,
+      callback_url: getCallbackUrl('/account/rituals?payment=success'),
       callback_method: "get",
     } as any);
 

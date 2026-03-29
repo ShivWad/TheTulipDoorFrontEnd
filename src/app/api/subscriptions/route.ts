@@ -30,6 +30,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getCallbackUrl } from "@/lib/app-url";
+import { calculateNextDeliveryDate } from "@/lib/delivery";
 import Razorpay from "razorpay";
 import { z } from "zod";
 import logger from "@/lib/logger";
@@ -145,7 +147,9 @@ async function createRecurringSubscription(planId: string, customerId: string) {
     total_count: 52,
     quantity: 1,
     customer_id: customerId,
-    customer_notify: 1,
+    customer_notify: 0,
+    callback_url: getCallbackUrl('/api/payment/callback'),
+    callback_method: 'get',
     start_at: Math.floor(Date.now() / 1000) + 86400
   } as any);
 
@@ -153,7 +157,7 @@ async function createRecurringSubscription(planId: string, customerId: string) {
     razorpaySubId: subscription.id, 
     shortUrl: subscription.short_url, 
     nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    nextDeliveryDate: getNextDeliveryDate(),
+    nextDeliveryDate: calculateNextDeliveryDate(),
   };
 }
 

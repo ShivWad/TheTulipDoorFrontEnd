@@ -145,6 +145,7 @@ async function createRecurringSubscription(planId: string, customerId: string) {
     total_count: 52,
     quantity: 1,
     customer_id: customerId,
+    customer_notify: 1,
     start_at: Math.floor(Date.now() / 1000) + 86400
   } as any);
 
@@ -322,14 +323,23 @@ export async function POST(request: NextRequest) {
         
         if (razorpayError?.code === 'BAD_REQUEST_ERROR' && razorpayError?.description?.includes('already exists')) {
           const customers = await razorpay.customers.all({
-            count: 1,
+            count: 10,
             //@ts-ignore
             email: user.email,
           }) as any;
           
-          if (customers.items.length > 0) {
-            razorpayCustomerId = customers.items[0].id;
-          } else {
+          const existing = customers.items.find((c: any) => c.email === user.email);
+          
+          if (existing) {
+            razorpayCustomerId = existing.id;
+          } else if (user.phone) {
+            const byContact = customers.items.find((c: any) => c.contact === user.phone);
+            if (byContact) {
+              razorpayCustomerId = byContact.id;
+            }
+          }
+          
+          if (!razorpayCustomerId) {
             console.error('Could not find existing customer in Razorpay');
             return NextResponse.json({
               error: "Payment setup failed",

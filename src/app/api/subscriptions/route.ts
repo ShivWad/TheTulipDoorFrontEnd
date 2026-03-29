@@ -237,6 +237,8 @@ export async function GET() {
       },
     });
   } catch (error) {
+    console.log(">>>GET",error);
+
     logger.error({ message: 'Get subscription error', error: (error as Error).message });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -309,8 +311,9 @@ export async function POST(request: NextRequest) {
         });
         razorpayCustomerId = customer.id;
       } catch (error: any) {
+      console.log(">>>CUSTOMER CREATE",error);
         const razorpayError = error.response?.body?.error;
-        console.error('Razorpay customer create error:', razorpayError || error.message);
+        console.error('Razorpay customer create error:', error || razorpayError || error.message);
         
         if (razorpayError?.code === 'BAD_REQUEST_ERROR' && razorpayError?.description?.includes('already exists')) {
           const customers = await razorpay.customers.all({
@@ -369,6 +372,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
+    console.log(">>>POST SUBCRIPTION CREATE",error);
     const razorpayError = error.response?.body?.error;
     if (razorpayError) {
       console.error('Razorpay subscription error:', razorpayError);
@@ -481,6 +485,7 @@ export async function PUT(request: NextRequest) {
     // Invalid action
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
+    console.log(">>>PUT",error);
     logger.error({ message: 'Update subscription error', error: (error as Error).message });
     return NextResponse.json({ error: "Failed to update subscription" }, { status: 500 });
   }

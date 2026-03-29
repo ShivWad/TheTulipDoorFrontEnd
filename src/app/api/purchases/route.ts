@@ -88,6 +88,8 @@ export async function GET() {
       },
     });
   } catch (error) {
+      console.log(">>>GET",error);
+
     logger.error({ message: 'Get purchase error', error: (error as Error).message });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -132,6 +134,8 @@ export async function POST(request: NextRequest) {
         });
         razorpayCustomerId = customer.id;
       } catch (error: any) {
+      console.log(">>>CUSTOMER CREATE",error);
+
         const razorpayError = error.response?.body?.error;
         console.error('Razorpay customer create error:', razorpayError || error.message);
         
@@ -199,6 +203,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
+      console.log(">>>PURCHASE POST ",error);
+    
     const razorpayError = error.response?.body?.error;
     if (razorpayError) {
       console.error('Razorpay purchase error:', razorpayError);

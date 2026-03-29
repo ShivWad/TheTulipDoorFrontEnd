@@ -314,6 +314,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (customerError: any) {
         const errorBody = customerError.response?.body?.error;
+        console.error('Razorpay customer creation error:', errorBody || customerError.message);
         if (customerError.response?.status === 400 && 
             errorBody?.code === 'BAD_REQUEST_ERROR' && 
             errorBody?.description?.includes('Customer already exists')) {
@@ -370,6 +371,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     const razorpayError = error.response?.body?.error;
     if (razorpayError) {
+      console.error('Razorpay subscription error:', razorpayError);
       logger.error({ message: 'Create subscription error', error: razorpayError });
       return NextResponse.json({
         error: razorpayError.description || "Payment failed",
@@ -377,6 +379,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    console.error('Subscription error:', error.message);
     logger.error({ message: 'Create subscription error', error: error.message });
     return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 });
   }

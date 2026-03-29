@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (customerError: any) {
         const errorBody = customerError.response?.body?.error;
+        console.error('Razorpay customer creation error:', errorBody || customerError.message);
         if (customerError.response?.status === 400 && 
             errorBody?.code === 'BAD_REQUEST_ERROR' && 
             errorBody?.description?.includes('Customer already exists')) {
@@ -200,12 +201,14 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     const razorpayError = error.response?.body?.error;
     if (razorpayError) {
+      console.error('Razorpay purchase error:', razorpayError);
       logger.error({ message: 'Create purchase error', error: razorpayError });
       return NextResponse.json({
         error: razorpayError.description || "Payment failed",
         message: razorpayError.reason || "Failed to create purchase",
       }, { status: 400 });
     }
+    console.error('Purchase error:', error.message);
     logger.error({ message: 'Create purchase error', error: error.message });
     return NextResponse.json({ error: "Failed to create purchase" }, { status: 500 });
   }

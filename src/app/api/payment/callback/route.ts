@@ -59,12 +59,26 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Update OneTimePurchase
     const purchase = await db.oneTimePurchase.findFirst({
       where: { razorpayPaymentLinkId: paymentLinkId },
     });
 
-    if (purchase && purchase.status === 'pending') {
+    if (!purchase) {
+      logger.error({ message: 'Purchase not found', paymentLinkId });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+    }
+
+    // Check if already processed (by webhook)
+    const existingOrder = await db.order.findFirst({
+      where: { razorpayOrderId: paymentLinkId },
+    });
+
+    if (existingOrder) {
+      logger.info({ message: 'Order already exists (webhook processed)', paymentLinkId });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=success`);
+    }
+
+    if (purchase.status === 'pending') {
       const nextDeliveryDate = calculateNextDeliveryDate();
       
       await db.oneTimePurchase.update({
@@ -85,6 +99,16 @@ export async function GET(request: NextRequest) {
           razorpayOrderId: paymentLinkId,
           razorpayPaymentId: paymentId,
           deliveryDate: nextDeliveryDate,
+        },
+      });
+
+      await db.payment.create({
+        data: {
+          userId: purchase.userId,
+          amount: purchase.price,
+          status: 'captured',
+          razorpayPaymentId: paymentId,
+          razorpayOrderId: paymentLinkId,
         },
       });
 

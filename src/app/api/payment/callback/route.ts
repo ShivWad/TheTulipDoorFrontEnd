@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
   const signature = searchParams.get('razorpay_signature');
   const subscriptionId = searchParams.get('razorpay_subscription_id');
   
+  console.log(">>> CALLBACK RECEIVED:", { paymentId, paymentLinkId, signature: signature ? 'present' : 'missing', subscriptionId });
+  
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://thetulipdoor.com';
 
   // Check if this is a subscription callback or payment link callback
@@ -41,7 +43,8 @@ export async function GET(request: NextRequest) {
 
   // Payment Link callback
   if (!paymentLinkId || !paymentId || !signature) {
-    logger.error({ message: 'Missing callback parameters', paymentLinkId, paymentId, signature });
+    logger.error({ message: 'Missing callback parameters', paymentLinkId, paymentId, signature: signature ? 'present' : 'missing' });
+    console.log(">>> CALLBACK FAILED - Missing params:", { paymentLinkId, paymentId, hasSignature: !!signature });
     return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
   }
 

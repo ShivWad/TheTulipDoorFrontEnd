@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       description: `${planInfo.name} - One-time purchase`,
       customer: { email: user.email, contact: user.phone || undefined },
       notes: { planKey: "one_time", type: "one_time", userId: session.user.id },
-      callback_url: getCallbackUrl('/account/rituals?payment=success'),
+      callback_url: getCallbackUrl('/api/payment/callback'),
       callback_method: "get",
     } as any);
 

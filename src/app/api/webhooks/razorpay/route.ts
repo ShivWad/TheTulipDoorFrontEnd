@@ -156,8 +156,19 @@ export async function POST(request: NextRequest) {
         const subId = subscriptionEntity.id;
         const currentEnd = subscriptionEntity.current_end;
         const chargeAt = subscriptionEntity.charge_at;
+        const payId = paymentEntity?.id || subId;
         
         result = await db.$transaction(async (tx) => {
+          // Check if this specific payment was already processed
+          const existingPayment = await tx.payment.findFirst({
+            where: { razorpayPaymentId: payId },
+          });
+
+          if (existingPayment) {
+            logger.info({ razorpayPaymentId: payId, message: 'Subscription payment already processed' });
+            return { skipped: true, reason: 'duplicate_payment' };
+          }
+
           const subscription = await tx.subscription.findFirst({
             where: { razorpaySubId: subId },
           });
@@ -187,6 +198,7 @@ export async function POST(request: NextRequest) {
               status: "pending",
               total: subscription.price,
               razorpayOrderId: subId,
+              razorpayPaymentId: payId,
               deliveryDate: nextDeliveryDate,
             },
           });
@@ -197,7 +209,7 @@ export async function POST(request: NextRequest) {
               orderId: order.id,
               amount: subscription.price,
               status: "captured",
-              razorpayPaymentId: subId,
+              razorpayPaymentId: payId,
               razorpayOrderId: subId,
             },
           });
@@ -222,6 +234,16 @@ export async function POST(request: NextRequest) {
         const payOrderId = paymentEntity.order_id;
         
         result = await db.$transaction(async (tx) => {
+          // Idempotency check
+          const existingPayment = await tx.payment.findFirst({
+            where: { razorpayPaymentId: payId },
+          });
+
+          if (existingPayment) {
+            logger.info({ razorpayPaymentId: payId, message: 'One-time payment already processed' });
+            return { skipped: true, reason: 'duplicate_payment' };
+          }
+
           const purchase = await tx.oneTimePurchase.findFirst({
             where: { razorpayPaymentLinkId: payOrderId },
           });
@@ -285,6 +307,16 @@ export async function POST(request: NextRequest) {
         const actualPaymentId = paymentEntity?.id || plId;
         
         result = await db.$transaction(async (tx) => {
+          // Idempotency check
+          const existingPayment = await tx.payment.findFirst({
+            where: { razorpayPaymentId: actualPaymentId },
+          });
+
+          if (existingPayment) {
+            logger.info({ razorpayPaymentId: actualPaymentId, message: 'Payment Link already processed' });
+            return { skipped: true, reason: 'duplicate_payment' };
+          }
+
           const purchase = await tx.oneTimePurchase.findFirst({
             where: { razorpayPaymentLinkId: plId },
           });

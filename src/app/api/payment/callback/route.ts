@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
   const paymentLinkId = searchParams.get('razorpay_payment_link_id');
   const signature = searchParams.get('razorpay_signature');
   const subscriptionId = searchParams.get('razorpay_subscription_id');
+  const referenceId = searchParams.get('razorpay_payment_link_reference_id') || '';
+  const paymentStatus = searchParams.get('razorpay_payment_link_status') || 'paid';
   
   console.log(">>> CALLBACK RECEIVED:", { paymentId, paymentLinkId, signature: signature ? 'present' : 'missing', subscriptionId });
   
@@ -37,7 +39,91 @@ export async function GET(request: NextRequest) {
 
   // Check if this is a subscription callback or payment link callback
   if (subscriptionId) {
-    // Subscription callback
+    // Subscription callback - verify signature using KEY_SECRET
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    
+    if (!keySecret) {
+      logger.error({ message: 'Missing RAZORPAY_KEY_SECRET' });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+    }
+    
+    if (!signature || !paymentId) {
+      logger.error({ message: 'Missing subscription callback parameters', subscriptionId, paymentId, hasSignature: !!signature });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+    }
+    
+    const isValidSub = verifySubscriptionSignature(subscriptionId, paymentId, signature, keySecret);
+    if (!isValidSub) {
+      logger.error({ message: 'Invalid subscription signature', subscriptionId });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+    }
+    
+    // Provision subscription in database if not already done by webhook
+    try {
+      // 1. Check if this specific payment was already processed (idempotency)
+      const existingPaymentOrder = await db.order.findFirst({
+        where: { razorpayPaymentId: paymentId },
+      });
+
+      if (existingPaymentOrder) {
+        logger.info({ message: 'Subscription order already exists (webhook processed)', paymentId });
+        return NextResponse.redirect(`${baseUrl}/account/rituals?payment=success`);
+      }
+
+      const existingSub = await db.subscription.findFirst({
+        where: { razorpaySubId: subscriptionId },
+      });
+
+      if (!existingSub) {
+        logger.error({ message: 'Subscription not found in database', subscriptionId });
+        return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+      }
+
+      // 2. If subscription is still pending or needs updating, do it in a transaction
+      await db.$transaction(async (tx) => {
+        const nextDeliveryDate = calculateNextDeliveryDate();
+        
+        if (existingSub.status === 'pending') {
+          await tx.subscription.update({
+            where: { id: existingSub.id },
+            data: {
+              status: 'active',
+              nextDeliveryDate,
+            },
+          });
+        }
+
+        const order = await tx.order.create({
+          data: {
+            userId: existingSub.userId,
+            subscriptionId: existingSub.id,
+            orderType: 'subscription',
+            status: 'confirmed',
+            total: existingSub.price,
+            razorpayOrderId: subscriptionId,
+            razorpayPaymentId: paymentId,
+            deliveryDate: nextDeliveryDate,
+          },
+        });
+
+        await tx.payment.create({
+          data: {
+            userId: existingSub.userId,
+            orderId: order.id,
+            amount: existingSub.price,
+            status: 'captured',
+            razorpayPaymentId: paymentId,
+            razorpayOrderId: subscriptionId,
+          },
+        });
+      });
+
+      logger.info({ message: 'Subscription callback - subscription activated and order created', subscriptionId, paymentId });
+    } catch (error) {
+      logger.error({ message: 'Subscription callback processing error', error: (error as Error).message });
+      return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
+    }
+    
     return NextResponse.redirect(`${baseUrl}/account/rituals?payment=success`);
   }
 
@@ -48,13 +134,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
   }
 
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    logger.error({ message: 'Missing RAZORPAY_WEBHOOK_SECRET' });
+  // Use KEY_SECRET for callback verification (not WEBHOOK_SECRET)
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keySecret) {
+    logger.error({ message: 'Missing RAZORPAY_KEY_SECRET' });
     return NextResponse.redirect(`${baseUrl}/account/rituals?payment=failed`);
   }
 
-  const isValid = verifyPaymentLinkSignature(paymentLinkId, paymentId, signature, webhookSecret);
+  const isValid = verifyPaymentLinkSignature(paymentLinkId, paymentId, signature, keySecret, referenceId, paymentStatus);
   
   if (!isValid) {
     logger.error({ message: 'Invalid payment signature', paymentLinkId, paymentId });

@@ -1,12 +1,12 @@
 import crypto from 'crypto';
 
-export function verifyPaymentLinkSignature(
-  paymentLinkId: string,
+export function verifySubscriptionSignature(
+  subscriptionId: string,
   paymentId: string,
   signature: string,
   secret: string
 ): boolean {
-  const payload = `${paymentLinkId}|${paymentId}`;
+  const payload = `${paymentId}|${subscriptionId}`;
   const expectedSignature = crypto
     .createHmac('sha256', secret)
     .update(payload)
@@ -14,13 +14,15 @@ export function verifyPaymentLinkSignature(
   return signature === expectedSignature;
 }
 
-export function verifySubscriptionSignature(
-  subscriptionId: string,
+export function verifyPaymentLinkSignature(
+  paymentLinkId: string,
   paymentId: string,
   signature: string,
-  secret: string
+  secret: string,
+  referenceId: string = '',
+  status: string = 'paid'
 ): boolean {
-  const payload = `${subscriptionId}|${paymentId}`;
+  const payload = `${paymentLinkId}|${referenceId}|${status}|${paymentId}`;
   const expectedSignature = crypto
     .createHmac('sha256', secret)
     .update(payload)

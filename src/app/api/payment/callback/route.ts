@@ -22,6 +22,7 @@ import { db } from "@/lib/db";
 import { verifyPaymentLinkSignature, verifySubscriptionSignature } from "@/lib/razorpay-verify";
 import { calculateNextDeliveryDate } from "@/lib/delivery";
 import logger from "@/lib/logger";
+import { getAppUrl } from "@/lib/app-url";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   
   console.log(">>> CALLBACK RECEIVED:", { paymentId, paymentLinkId, signature: signature ? 'present' : 'missing', subscriptionId });
   
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://thetulipdoor.com';
+  const baseUrl = getAppUrl();
 
   // Check if this is a subscription callback or payment link callback
   if (subscriptionId) {
